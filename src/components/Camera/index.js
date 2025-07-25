@@ -1,5 +1,5 @@
-export { CameraProvider, useCamera } from './CameraProvider'
+export { CameraProvider } from './CameraProvider'
 export { CameraButton } from './CameraButton'
-export { CameraView } from './CameraView'
 export { ImagePreview } from './ImagePreview'
-export { CameraPlaceholder } from './CameraPlaceholder' 
+export { CameraPlaceholder } from './CameraPlaceholder'
+export { useCamera } from '../../hooks/useCamera' 

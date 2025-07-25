@@ -1,7 +1,6 @@
 import { 
   CameraProvider, 
   CameraButton, 
-  CameraView, 
   ImagePreview, 
   CameraPlaceholder,
   useCamera 
@@ -17,7 +16,7 @@ function App() {
               Fotoğraf Çekme Uygulaması
             </h1>
             <p className="text-gray-600">
-              Anında fotoğraf çekin ve önizleyin
+              Telefonunuzun kamerası ile fotoğraf çekin
             </p>
           </header>
 
@@ -31,14 +30,10 @@ function App() {
 }
 
 function CameraContent() {
-  const { isCameraOpen, capturedImage } = useCamera()
+  const { capturedImage } = useCamera()
 
   if (capturedImage) {
     return <ImagePreview />
-  }
-
-  if (isCameraOpen) {
-    return <CameraView />
   }
 
   return <CameraPlaceholder />

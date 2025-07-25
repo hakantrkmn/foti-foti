@@ -1,4 +1,4 @@
-import { useCamera } from './CameraProvider'
+import { useCamera } from '../../hooks/useCamera'
 
 export const ImagePreview = () => {
   const { capturedImage, resetPhoto } = useCamera()

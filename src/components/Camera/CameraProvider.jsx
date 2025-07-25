@@ -1,7 +1,8 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import { CameraContext } from './CameraContext'
 import { googleDriveService } from '../../services/googleDrive'
 import { FirebaseService } from '../../services/firebase'
+import { useNativeCamera } from '../../hooks/useNativeCamera'
 import { useSearchParams } from 'react-router-dom'
 import { useAnalytics } from '../../hooks/useAnalytics'
 import { storage } from '../../utils/storage'
@@ -23,9 +24,9 @@ export const CameraProvider = ({ children, initialFolderId = null }) => {
   const [activeUploads, setActiveUploads] = useState(0)
   const [uploadHistory, setUploadHistory] = useState([])
   
-  const fileInputRef = useRef(null)
   const [searchParams] = useSearchParams()
   const { trackUserLogin, trackPhotoUpload, trackError } = useAnalytics()
+  const { openCamera } = useNativeCamera()
 
   useEffect(() => {
     console.log('CameraProvider: useEffect triggered')
@@ -314,34 +315,33 @@ export const CameraProvider = ({ children, initialFolderId = null }) => {
 
   // updateFolderId function removed - folder ID is now read-only from URL
 
-  const openNativeCamera = () => {
-    if (fileInputRef.current) {
-      fileInputRef.current.click()
+  const openNativeCamera = async () => {
+    try {
+      console.log('CameraProvider: Opening native camera...')
+      setIsLoading(true)
+      setError(null)
+      
+      const result = await openCamera()
+      
+      if (result.success) {
+        console.log('CameraProvider: Native camera photo captured successfully')
+        setCapturedImage(result.dataUrl)
+        
+        // Track successful photo capture
+        trackPhotoUpload(folderId, true)
+      } else {
+        console.error('CameraProvider: Native camera failed:', result.error)
+        setError(result.error || 'Kamera açılamadı')
+      }
+    } catch (error) {
+      console.error('CameraProvider: Native camera error:', error)
+      setError('Kamera açılırken bir hata oluştu: ' + error.message)
+    } finally {
+      setIsLoading(false)
     }
   }
 
-  const handleFileSelect = (event) => {
-    const file = event.target.files[0]
-    if (file) {
-      setIsLoading(true)
-      
-      const reader = new FileReader()
-      reader.onload = (e) => {
-        setCapturedImage(e.target.result)
-        setIsLoading(false)
-        setError(null)
-        setUploadStatus(null)
-      }
-      reader.onerror = () => {
-        setError('Fotoğraf yüklenirken bir hata oluştu.')
-        setIsLoading(false)
-      }
-      reader.readAsDataURL(file)
-    }
-    
-    // Input'u temizle ki aynı dosya tekrar seçilebilsin
-    event.target.value = ''
-  }
+
 
   const uploadToGoogleDrive = () => {
     if (!capturedImage) {
@@ -652,15 +652,6 @@ export const CameraProvider = ({ children, initialFolderId = null }) => {
   return (
     <CameraContext.Provider value={value}>
       {children}
-      {/* Gizli file input */}
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept="image/*"
-        capture="environment"
-        onChange={handleFileSelect}
-        className="hidden"
-      />
     </CameraContext.Provider>
   )
 } 

@@ -3,6 +3,7 @@ import { LoginScreen } from './components/Auth'
 import { UploadPage } from './pages/UploadPage'
 import { CreatePage } from './pages/CreatePage'
 import { CameraProvider } from './components/Camera'
+import { PWAInstallPrompt } from './components/Camera/PWAInstallPrompt'
 
 function App() {
   return (
@@ -21,6 +22,9 @@ function App() {
           {/* Bilinmeyen rotalar için ana sayfaya yönlendir */}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
+        
+        {/* PWA Install Prompt */}
+        <PWAInstallPrompt />
       </CameraProvider>
     </Router>
   )

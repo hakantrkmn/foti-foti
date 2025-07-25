@@ -3,7 +3,6 @@ import { LoginScreen } from './components/Auth'
 import { UploadPage } from './pages/UploadPage'
 import { CreatePage } from './pages/CreatePage'
 import { CameraProvider } from './components/Camera'
-import { PWAInstallPrompt } from './components/Camera/PWAInstallPrompt'
 import { DarkModeProvider } from './contexts/DarkModeProvider'
 
 function App() {
@@ -21,13 +20,10 @@ function App() {
             {/* Klasör oluşturma sayfası */}
             <Route path="/create" element={<CreatePage />} />
             
-            {/* Bilinmeyen rotalar için ana sayfaya yönlendir */}
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
-          
-          {/* PWA Install Prompt */}
-          <PWAInstallPrompt />
-        </CameraProvider>
+                      {/* Bilinmeyen rotalar için ana sayfaya yönlendir */}
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </CameraProvider>
       </Router>
     </DarkModeProvider>
   )

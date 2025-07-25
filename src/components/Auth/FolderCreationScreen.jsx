@@ -7,6 +7,7 @@ import { getUploadUrl } from '../../utils/config';
 import { DarkModeToggle } from '../DarkModeToggle';
 import { AuthButton } from '../Camera';
 import { logger } from '../../utils/logger.js';
+import { googleDriveService } from '../../services/googleDrive';
 
 const LoginPrompt = ({ onLogin, isLoading }) => (
     <div className="text-center p-8">
@@ -37,7 +38,32 @@ export const FolderCreationScreen = ({ onBack }) => {
 
   const [existingFolderData, setExistingFolderData] = useState(null);
   const [isNewFolder, setIsNewFolder] = useState(true);
+  const [folderValidation, setFolderValidation] = useState(null);
+  const [isValidating, setIsValidating] = useState(false);
 
+  // Validate folder with Google Drive API
+  const validateFolder = useCallback(async (folderId) => {
+    if (!folderId.trim() || folderId.trim().length < 10) {
+      setFolderValidation(null);
+      return;
+    }
+
+    setIsValidating(true);
+    setFolderValidation(null);
+
+    try {
+      const result = await googleDriveService.validateFolderWithApiKey(folderId.trim());
+      setFolderValidation(result);
+    } catch (error) {
+      logger.error('Folder validation error:', error);
+      setFolderValidation({
+        success: false,
+        error: 'An error occurred during folder validation.'
+      });
+    } finally {
+      setIsValidating(false);
+    }
+  }, []);
 
   const generateQrForExistingFolder = useCallback(async (data) => {
     try {
@@ -55,6 +81,10 @@ export const FolderCreationScreen = ({ onBack }) => {
   useEffect(() => {
     const checkFolderExistence = async () => {
         if (folderId.trim().length > 10) { // Basic validation
+            // First validate with Google Drive API
+            await validateFolder(folderId.trim());
+            
+            // Then check Firebase
             const result = await FirebaseService.getFolder(folderId.trim());
             if (result.success) {
                 setExistingFolderData(result.data);
@@ -71,6 +101,7 @@ export const FolderCreationScreen = ({ onBack }) => {
             setExistingFolderData(null);
             setIsNewFolder(true);
             setQrCodeUrl('');
+            setFolderValidation(null);
         }
     };
 
@@ -81,12 +112,18 @@ export const FolderCreationScreen = ({ onBack }) => {
     return () => {
         clearTimeout(handler);
     };
-  }, [folderId, generateQrForExistingFolder]);
+  }, [folderId, generateQrForExistingFolder, validateFolder]);
 
 
   const generateQRCode = async () => {
     if (!folderId.trim() || !userInfo) {
       setError('Please enter a Google Drive folder ID and make sure you are logged in.');
+      return;
+    }
+
+    // Check folder validation first
+    if (!folderValidation || !folderValidation.success) {
+      setError('Folder validation failed. Please enter a valid public folder ID.');
       return;
     }
 
@@ -211,10 +248,46 @@ export const FolderCreationScreen = ({ onBack }) => {
                   placeholder="Enter Google Drive folder ID"
                   className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                 />
-                 <div className="mt-3 text-sm text-gray-600 dark:text-gray-400">
+                
+                {/* Folder Validation Status */}
+                {isValidating && (
+                  <div className="mt-2 flex items-center text-blue-600 dark:text-blue-400">
+                    <svg className="animate-spin -ml-1 mr-2 h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    <span className="text-sm">Validating folder...</span>
+                  </div>
+                )}
+                
+                {folderValidation && !isValidating && (
+                  <div className={`mt-2 p-2 rounded text-sm ${
+                    folderValidation.success 
+                      ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300' 
+                      : 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300'
+                  }`}>
+                    {folderValidation.success ? (
+                      <div className="flex items-center">
+                        <svg className="w-4 h-4 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                        </svg>
+                        {folderValidation.message}
+                      </div>
+                    ) : (
+                      <div className="flex items-center">
+                        <svg className="w-4 h-4 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                        </svg>
+                        {folderValidation.error}
+                      </div>
+                    )}
+                  </div>
+                )}
+                
+                <div className="mt-3 text-sm text-gray-600 dark:text-gray-400">
                     <p className="mb-2"><strong>How to get Folder ID:</strong></p>
                     <ol className="list-decimal list-inside space-y-1">
-                        <li>Create a folder in Google Drive and set sharing to "Anyone with the link".</li>
+                        <li>Create a folder in Google Drive and set sharing to "Anyone with the link can edit".</li>
                         <li>Copy the ID from the folder URL: <code className="bg-gray-200 dark:bg-gray-600 px-1 rounded">.../folders/FOLDER_ID_HERE</code></li>
                     </ol>
                 </div>
@@ -246,7 +319,7 @@ export const FolderCreationScreen = ({ onBack }) => {
                 {isNewFolder ? (
                     <button
                         onClick={generateQRCode}
-                        disabled={isGenerating || !folderId.trim()}
+                        disabled={isGenerating || !folderId.trim() || !folderValidation?.success}
                         className="w-full flex items-center justify-center px-6 py-3 text-white bg-gradient-to-r from-green-500 to-green-600 rounded-lg shadow-lg hover:shadow-xl transition-all duration-300 disabled:opacity-50"
                     >
                       {isGenerating ? 'Generating...' : 'Create New QR Code'}
@@ -255,7 +328,7 @@ export const FolderCreationScreen = ({ onBack }) => {
                     <div>
                         <button
                             onClick={updateFolderLimit}
-                            disabled={!existingFolderData || existingFolderData.ownerId !== userInfo.id}
+                            disabled={!existingFolderData || existingFolderData.ownerId !== userInfo.id || !folderValidation?.success}
                             className="w-full flex items-center justify-center px-6 py-3 text-white bg-gradient-to-r from-blue-500 to-blue-600 rounded-lg shadow-lg hover:shadow-xl transition-all duration-300 disabled:opacity-50"
                         >
                             Update Limit
@@ -266,6 +339,13 @@ export const FolderCreationScreen = ({ onBack }) => {
                             </p>
                         )}
                     </div>
+                )}
+                
+                {/* Validation warning */}
+                {folderId.trim() && folderValidation && !folderValidation.success && !isValidating && (
+                  <div className="p-3 bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200 rounded-lg text-sm">
+                    <strong>⚠️ Cannot create QR code:</strong> Folder validation failed. Please ensure the folder is public and has "Anyone with the link can edit" permission.
+                  </div>
                 )}
               </div>
             

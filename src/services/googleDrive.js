@@ -416,6 +416,88 @@ class GoogleDriveService {
     this.accessToken = token
   }
 
+  // Validate folder with API key (for public folders)
+  async validateFolderWithApiKey(folderId) {
+    try {
+      const apiKey = this.apiKey;
+      if (!apiKey) {
+        return {
+          success: false,
+          error: 'API Key is required for folder validation'
+        };
+      }
+
+      // Try to get folder info with API key
+      const response = await fetch(`https://www.googleapis.com/drive/v3/files/${folderId}?key=${apiKey}&fields=id,name,mimeType,trashed,permissions`, {
+        method: 'GET'
+      });
+
+      if (!response.ok) {
+        if (response.status === 404) {
+          return {
+            success: false,
+            error: 'Folder not found. Please check the folder ID.'
+          };
+        } else if (response.status === 403) {
+          return {
+            success: false,
+            error: 'You do not have access to this folder. The folder might be private.'
+          };
+        } else {
+          return {
+            success: false,
+            error: `Could not retrieve folder information. Status: ${response.status}`
+          };
+        }
+      }
+
+      const folderData = await response.json();
+      
+      // Check if it's actually a folder
+      if (folderData.mimeType !== 'application/vnd.google-apps.folder') {
+        return {
+          success: false,
+          error: 'This ID does not belong to a folder. Please enter a valid folder ID.'
+        };
+      }
+
+      // Check if folder is trashed
+      if (folderData.trashed) {
+        return {
+          success: false,
+          error: 'This folder is in the trash.'
+        };
+      }
+
+      // Check if folder is public (has public permissions)
+      const isPublic = folderData.permissions && folderData.permissions.some(permission => 
+        permission.type === 'anyone' && permission.role === 'writer'
+      );
+
+      if (!isPublic) {
+        return {
+          success: false,
+          error: 'This folder is not public. Set the folder to "Anyone with the link can edit".'
+        };
+      }
+
+      return {
+        success: true,
+        folderName: folderData.name,
+        folderId: folderData.id,
+        isPublic: true,
+        message: `"${folderData.name}" folder is validated and publicly accessible.`
+      };
+
+    } catch (error) {
+      logger.error('Folder validation error:', error);
+      return {
+        success: false,
+        error: 'An error occurred during folder validation: ' + error.message
+      };
+    }
+  }
+
   async signOut() {
     if (window.gapi && window.gapi.auth2) {
       const auth2 = window.gapi.auth2.getAuthInstance()

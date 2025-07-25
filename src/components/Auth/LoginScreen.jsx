@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { DarkModeToggle } from '../DarkModeToggle'
+import { FirebaseService } from '../../services/firebase';
 
 export const LoginScreen = () => {
   const [isLoading, setIsLoading] = useState(false)
@@ -13,7 +14,7 @@ export const LoginScreen = () => {
     setShowFolderInput(true)
   }
 
-  const handleFolderIdSubmit = () => {
+  const handleFolderIdSubmit = async () => {
     if (!folderId.trim()) {
       setInputError('Lütfen klasör ID\'sini girin.')
       return
@@ -21,8 +22,20 @@ export const LoginScreen = () => {
     
     setInputError('')
     setIsLoading(true)
-    navigate(`/upload?folderId=${encodeURIComponent(folderId.trim())}`)
-    setIsLoading(false)
+
+    try {
+        const result = await FirebaseService.getFolder(folderId.trim());
+        
+        if (result.success) {
+            navigate(`/upload?folderId=${encodeURIComponent(folderId.trim())}`);
+        } else {
+            setInputError(result.error || 'Klasör bulunamadı. Lütfen ID\'yi kontrol edin.');
+        }
+    } catch {
+        setInputError('Bir hata oluştu. Lütfen daha sonra tekrar deneyin.');
+    } finally {
+        setIsLoading(false);
+    }
   }
 
   const handleBackToMain = () => {
@@ -164,7 +177,7 @@ export const LoginScreen = () => {
                         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                         <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                       </svg>
-                      Redirecting...
+                      Checking Folder...
                     </>
                   ) : (
                     <>

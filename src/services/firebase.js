@@ -42,12 +42,23 @@ const decodeHash = (hash) => {
 
 export class FirebaseService {
   // Klasör oluşturma
-  static async createFolder(folderId, limit, createdBy) {
+  static async createFolder(folderId, limit, createdBy, ownerId) {
     try {
+      const docRef = doc(db, 'folders', folderId);
+      const docSnap = await getDoc(docRef);
+
+      if (docSnap.exists()) {
+        return { 
+          success: false, 
+          error: 'Bu klasör ID\'si zaten sisteme kayıtlı. Eğer sahibi sizseniz, limiti güncelleyebilirsiniz.' 
+        };
+      }
+
       const folderData = {
         folderId,
         limit: parseInt(limit),
         createdBy,
+        ownerId, // Add ownerId to the folder data
         createdAt: new Date().toISOString(),
         isActive: true
       }
@@ -55,7 +66,7 @@ export class FirebaseService {
       await setDoc(doc(db, 'folders', folderId), folderData)
       
       // Hash oluştur
-      const hashData = { folderId, limit, createdBy }
+      const hashData = { folderId, limit, createdBy, ownerId }
       const hash = generateHash(hashData)
       
       return {
@@ -99,9 +110,21 @@ export class FirebaseService {
   }
 
   // Klasör limitini güncelle
-  static async updateFolderLimit(folderId, newLimit) {
+  static async updateFolderLimit(folderId, newLimit, userId) {
     try {
       const docRef = doc(db, 'folders', folderId)
+      
+      // Check for ownership before updating
+      const folderSnap = await getDoc(docRef);
+      if (!folderSnap.exists()) {
+        return { success: false, error: 'Klasör bulunamadı.' };
+      }
+
+      const folderData = folderSnap.data();
+      if (folderData.ownerId !== userId) {
+        return { success: false, error: 'Bu işlem için yetkiniz yok. Sadece klasör sahibi limiti güncelleyebilir.' };
+      }
+
       await updateDoc(docRef, {
         limit: parseInt(newLimit),
         updatedAt: new Date().toISOString()
@@ -249,7 +272,8 @@ export class FirebaseService {
       const hashData = {
         folderId: folderData.folderId,
         limit: folderData.limit,
-        createdBy: folderData.createdBy
+        createdBy: folderData.createdBy,
+        ownerId: folderData.ownerId // Include ownerId in hash calculation
       }
       
       const expectedHash = generateHash(hashData)

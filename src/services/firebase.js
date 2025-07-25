@@ -2,13 +2,13 @@ import { initializeApp } from 'firebase/app'
 import { getFirestore, doc, setDoc, getDoc, updateDoc, increment } from 'firebase/firestore'
 
 const firebaseConfig = {
-  apiKey: "AIzaSyCMrNvb2FZcCmwQL6p1kOTobpNJzQ7rT_M",
-  authDomain: "foti-foti-d4f07.firebaseapp.com",
-  projectId: "foti-foti-d4f07",
-  storageBucket: "foti-foti-d4f07.firebasestorage.app",
-  messagingSenderId: "381154649076",
-  appId: "1:381154649076:web:4074d42de2150a96e40fa1",
-  measurementId: "G-MEWD01RXF1"
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID,
+  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID
 }
 
 // Initialize Firebase

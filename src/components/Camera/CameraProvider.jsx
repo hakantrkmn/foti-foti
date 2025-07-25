@@ -3,6 +3,7 @@ import { CameraContext } from './CameraContext'
 import { googleDriveService } from '../../services/googleDrive'
 import { FirebaseService } from '../../services/firebase'
 import { useSearchParams } from 'react-router-dom'
+import { useAnalytics } from '../../hooks/useAnalytics'
 
 export const CameraProvider = ({ children, initialFolderId = null }) => {
   const [capturedImage, setCapturedImage] = useState(null)
@@ -18,6 +19,7 @@ export const CameraProvider = ({ children, initialFolderId = null }) => {
   
   const fileInputRef = useRef(null)
   const [searchParams] = useSearchParams()
+  const { trackUserLogin, trackPhotoUpload, trackError } = useAnalytics()
 
   useEffect(() => {
     console.log('CameraProvider: useEffect triggered')
@@ -71,6 +73,14 @@ export const CameraProvider = ({ children, initialFolderId = null }) => {
       setError(null)
       setUploadStatus(null)
       
+      // Clear any existing tokens to force re-authentication
+      if (window.gapi && window.gapi.auth2) {
+        const auth2 = window.gapi.auth2.getAuthInstance()
+        if (auth2) {
+          auth2.signOut()
+        }
+      }
+      
       // Load folder info from Firebase
       loadFolderInfoDirectly(folderId)
     }
@@ -92,10 +102,12 @@ export const CameraProvider = ({ children, initialFolderId = null }) => {
       } else {
         console.log('CameraProvider: Hash validation failed')
         setError('QR kod geçersiz veya süresi dolmuş.')
+        setIsAuthenticated(false) // Kullanıcının giriş yapmasını engelle
       }
     } catch (error) {
       console.error('CameraProvider: Hash validation error:', error)
       setError('Limit bilgileri yüklenirken hata oluştu.')
+      setIsAuthenticated(false) // Kullanıcının giriş yapmasını engelle
     }
   }
 
@@ -148,11 +160,13 @@ export const CameraProvider = ({ children, initialFolderId = null }) => {
         console.log('CameraProvider: Folder not found in Firebase, error:', result.error)
         setError('Bu klasör bulunamadı. Lütfen QR kodu tekrar tarayın veya klasör sahibiyle iletişime geçin.')
         setUploadLimit(null)
+        setIsAuthenticated(false) // Kullanıcının giriş yapmasını engelle
       }
     } catch (error) {
       console.error('CameraProvider: Load folder info error:', error)
       setError('Klasör bilgileri yüklenirken bir hata oluştu. Lütfen sayfayı yenileyip tekrar deneyin.')
       setUploadLimit(null)
+      setIsAuthenticated(false) // Kullanıcının giriş yapmasını engelle
     }
   }
 
@@ -203,19 +217,22 @@ export const CameraProvider = ({ children, initialFolderId = null }) => {
       console.log('CameraProvider: Authentication successful!')
       setIsAuthenticated(true)
       
-      // Set user info
-      if (authResult.userInfo) {
-        setUserInfo(authResult.userInfo)
-        console.log('CameraProvider: User info set:', authResult.userInfo)
-        
-        // Load Firebase data if we have folder info
-        if (folderId) {
-          console.log('CameraProvider: Loading Firebase data after authentication for folderId:', folderId)
-          await loadFirebaseData(folderId, authResult.userInfo.id)
-        } else {
-          console.log('CameraProvider: No folderId available after authentication')
+              // Set user info
+        if (authResult.userInfo) {
+          setUserInfo(authResult.userInfo)
+          console.log('CameraProvider: User info set:', authResult.userInfo)
+          
+          // Track successful login
+          trackUserLogin('google')
+          
+          // Load Firebase data if we have folder info
+          if (folderId) {
+            console.log('CameraProvider: Loading Firebase data after authentication for folderId:', folderId)
+            await loadFirebaseData(folderId, authResult.userInfo.id)
+          } else {
+            console.log('CameraProvider: No folderId available after authentication')
+          }
         }
-      }
       
       // Clear any previous errors
       setError(null)
@@ -304,7 +321,13 @@ export const CameraProvider = ({ children, initialFolderId = null }) => {
     }
 
     if (!folderId.trim()) {
-      setError('Lütfen Google Drive klasör ID\'sini girin.')
+      setError('Klasör ID bulunamadı. Lütfen QR kodu tekrar tarayın.')
+      return
+    }
+
+    // Validate folder ID format (Google Drive folder IDs are typically 33 characters)
+    if (folderId.trim().length < 20) {
+      setError('Geçersiz klasör ID formatı. Lütfen doğru klasör ID\'sini girin.')
       return
     }
 
@@ -387,38 +410,45 @@ export const CameraProvider = ({ children, initialFolderId = null }) => {
       // Upload image with custom folder ID
       const result = await googleDriveService.uploadImage(capturedImage, fileName, folderId.trim())
       
-      if (result.success) {
-        console.log('CameraProvider: Google Drive upload successful, updating Firebase...')
-        console.log('CameraProvider: uploadLimit:', uploadLimit)
-        console.log('CameraProvider: userInfo.id:', userInfo.id)
-        
-        // Increment upload count in Firebase (always, regardless of limit)
-        console.log('CameraProvider: Calling FirebaseService.incrementUserUploadCount...')
-        const firebaseResult = await FirebaseService.incrementUserUploadCount(folderId.trim(), userInfo.id)
-        console.log('CameraProvider: Firebase increment result:', firebaseResult)
-        
-        if (firebaseResult.success) {
-          setCurrentUploadCount(prev => prev + 1)
-          console.log('CameraProvider: Upload count incremented successfully')
-        } else {
-          console.error('CameraProvider: Firebase increment failed:', firebaseResult.error)
-        }
-        
-        setUploadStatus({
-          type: 'success',
-          message: result.message,
-          fileId: result.fileId,
-          webViewLink: result.webViewLink
-        })
-      } else {
-        setError(result.message)
-        setUploadStatus(null)
-      }
-    } catch (error) {
-      console.error('CameraProvider: Upload error:', error)
-      setError('Google Drive\'a yükleme sırasında bir hata oluştu: ' + error.message)
-      setUploadStatus(null)
-    } finally {
+                   if (result.success) {
+               console.log('CameraProvider: Google Drive upload successful, updating Firebase...')
+               console.log('CameraProvider: uploadLimit:', uploadLimit)
+               console.log('CameraProvider: userInfo.id:', userInfo.id)
+               
+               // Track successful photo upload
+               trackPhotoUpload(folderId.trim(), true)
+               
+               // Increment upload count in Firebase (always, regardless of limit)
+               console.log('CameraProvider: Calling FirebaseService.incrementUserUploadCount...')
+               const firebaseResult = await FirebaseService.incrementUserUploadCount(folderId.trim(), userInfo.id)
+               console.log('CameraProvider: Firebase increment result:', firebaseResult)
+               
+               if (firebaseResult.success) {
+                 setCurrentUploadCount(prev => prev + 1)
+                 console.log('CameraProvider: Upload count incremented successfully')
+               } else {
+                 console.error('CameraProvider: Firebase increment failed:', firebaseResult.error)
+               }
+               
+               setUploadStatus({
+                 type: 'success',
+                 message: result.message,
+                 fileId: result.fileId,
+                 webViewLink: result.webViewLink
+               })
+             } else {
+               setError(result.message)
+               setUploadStatus(null)
+               // Track failed photo upload
+               trackPhotoUpload(folderId.trim(), false)
+             }
+               } catch (error) {
+             console.error('CameraProvider: Upload error:', error)
+             setError('Google Drive\'a yükleme sırasında bir hata oluştu: ' + error.message)
+             setUploadStatus(null)
+             // Track upload error
+             trackError('upload_error', error.message)
+           } finally {
       setIsLoading(false)
     }
   }

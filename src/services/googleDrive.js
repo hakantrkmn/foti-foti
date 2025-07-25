@@ -35,23 +35,34 @@ class GoogleDriveService {
         return
       }
 
+      console.log('GoogleDriveService: Loading GAPI client...')
+      console.log('GoogleDriveService: API Key:', this.apiKey ? 'Present' : 'Missing')
+      console.log('GoogleDriveService: Discovery Docs:', this.discoveryDocs)
+
       const script = document.createElement('script')
       script.src = 'https://apis.google.com/js/api.js'
       script.onload = () => {
+        console.log('GoogleDriveService: GAPI script loaded')
         window.gapi.load('client', async () => {
           try {
+            console.log('GoogleDriveService: Initializing GAPI client...')
             await window.gapi.client.init({
               apiKey: this.apiKey,
               discoveryDocs: this.discoveryDocs,
             })
+            console.log('GoogleDriveService: GAPI client initialized successfully')
             this.gapiInited = true
             resolve()
           } catch (error) {
+            console.error('GoogleDriveService: GAPI client initialization failed:', error)
             reject(error)
           }
         })
       }
-      script.onerror = reject
+      script.onerror = (error) => {
+        console.error('GoogleDriveService: Failed to load GAPI script:', error)
+        reject(error)
+      }
       document.head.appendChild(script)
     })
   }
@@ -240,7 +251,25 @@ class GoogleDriveService {
       })
 
       if (!response.ok) {
-        throw new Error(`Upload failed: ${response.statusText}`)
+        const errorText = await response.text()
+        console.error('Google Drive upload error details:', {
+          status: response.status,
+          statusText: response.statusText,
+          errorText: errorText
+        })
+        
+        let errorMessage = 'Upload failed'
+        if (response.status === 403) {
+          errorMessage = 'Bu klasöre yazma izniniz yok. Lütfen klasör ID\'sini kontrol edin veya klasör sahibiyle iletişime geçin.'
+        } else if (response.status === 404) {
+          errorMessage = 'Klasör bulunamadı. Lütfen klasör ID\'sini kontrol edin.'
+        } else if (response.status === 401) {
+          errorMessage = 'Google Drive erişim izniniz geçersiz. Lütfen tekrar giriş yapın.'
+        } else {
+          errorMessage = `Upload failed: ${response.status} ${response.statusText}`
+        }
+        
+        throw new Error(errorMessage)
       }
 
       const result = await response.json()

@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import QRCode from 'qrcode'
 import { FirebaseService, generateHash } from '../../services/firebase'
+import { useAnalytics } from '../../hooks/useAnalytics'
+import { getUploadUrl } from '../../utils/config'
 
 export const FolderCreationScreen = ({ onBack }) => {
   const [folderId, setFolderId] = useState('')
@@ -9,6 +11,7 @@ export const FolderCreationScreen = ({ onBack }) => {
   const [isGenerating, setIsGenerating] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
+  const { trackFolderCreation } = useAnalytics()
 
   const generateQRCode = async () => {
     if (!folderId.trim()) {
@@ -32,9 +35,11 @@ export const FolderCreationScreen = ({ onBack }) => {
         throw new Error(result.error)
       }
 
+      // Track folder creation
+      trackFolderCreation(folderId.trim(), limit)
+
       // QR kod için URL oluştur (hash ile)
-      const appUrl = window.location.origin
-      const qrData = `${appUrl}/upload?folderId=${encodeURIComponent(folderId.trim())}&hash=${result.hash}`
+      const qrData = getUploadUrl(folderId.trim(), result.hash)
       
       // QR kod oluştur
       const qrCodeDataUrl = await QRCode.toDataURL(qrData, {
@@ -60,8 +65,7 @@ export const FolderCreationScreen = ({ onBack }) => {
     if (!qrCodeUrl) return
 
     try {
-      const appUrl = window.location.origin
-      const qrData = `${appUrl}/upload?folderId=${encodeURIComponent(folderId.trim())}&hash=${generateHash({ folderId: folderId.trim(), limit })}`
+      const qrData = getUploadUrl(folderId.trim(), generateHash({ folderId: folderId.trim(), limit }))
       
       await navigator.clipboard.writeText(qrData)
       alert('URL panoya kopyalandı!')

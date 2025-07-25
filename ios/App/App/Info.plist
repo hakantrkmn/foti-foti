@@ -45,9 +45,5 @@
 	</array>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<true/>
-	<key>NSCameraUsageDescription</key>
-	<string>Bu uygulama fotoğraf çekmek için kameraya erişim gerektirir.</string>
-	<key>NSPhotoLibraryUsageDescription</key>
-	<string>Bu uygulama fotoğrafları galeriye kaydetmek için galeri erişimi gerektirir.</string>
 </dict>
 </plist>

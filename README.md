@@ -21,8 +21,6 @@ A React-based photo upload application that allows users to take photos and uplo
 - **Database**: Firebase Firestore
 - **Analytics**: Vercel Analytics
 - **Routing**: React Router
-- **Mobile**: Capacitor (iOS & Android)
-- **Camera**: Native Device Camera
 
 ## Environment Variables
 
@@ -51,33 +49,10 @@ VITE_BASE_URL=http://localhost:5173
 
 ## Installation
 
-### Web Development
 ```bash
 npm install
 npm run dev
 ```
-
-### Mobile Development
-
-#### iOS
-```bash
-npm install
-npm run build
-npx cap sync ios
-npx cap open ios
-```
-
-#### Android
-```bash
-npm install
-npm run build
-npx cap sync android
-npx cap open android
-```
-
-Detaylı kurulum rehberleri için:
-- [iOS Kurulum Rehberi](GOOGLE_DRIVE_SETUP.md)
-- [Android Kurulum Rehberi](ANDROID_SETUP.md)
 
 ## Deployment
 

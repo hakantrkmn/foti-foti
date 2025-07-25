@@ -17,13 +17,18 @@ const db = getFirestore(app)
 
 // Hash fonksiyonu (basit ama güvenli)
 const generateHash = (data) => {
-  const str = JSON.stringify(data)
+  // Platform bağımsız hash oluşturma
+  const str = JSON.stringify(data, Object.keys(data).sort())
   let hash = 0
-  for (let i = 0; i < str.length; i++) {
+  const len = str.length
+  
+  for (let i = 0; i < len; i++) {
     const char = str.charCodeAt(i)
     hash = ((hash << 5) - hash) + char
     hash = hash & hash // Convert to 32bit integer
   }
+  
+  // Platform bağımsız sonuç için Math.abs kullan
   return Math.abs(hash).toString(36)
 }
 
@@ -224,9 +229,12 @@ export class FirebaseService {
   // Hash doğrulama
   static async validateHash(folderId, hash) {
     try {
+      console.log('Firebase: Validating hash for folderId:', folderId, 'hash:', hash)
+      
       const folderDoc = await getDoc(doc(db, 'folders', folderId))
       
       if (!folderDoc.exists()) {
+        console.log('Firebase: Folder not found')
         return {
           success: false,
           error: 'Klasör bulunamadı'
@@ -234,15 +242,24 @@ export class FirebaseService {
       }
       
       const folderData = folderDoc.data()
-      const expectedHash = generateHash({
+      console.log('Firebase: Folder data:', folderData)
+      
+      // Hash oluşturma için aynı veri yapısını kullan
+      const hashData = {
         folderId: folderData.folderId,
         limit: folderData.limit,
         createdBy: folderData.createdBy
-      })
+      }
+      
+      const expectedHash = generateHash(hashData)
+      console.log('Firebase: Expected hash:', expectedHash, 'Received hash:', hash)
+      
+      const isValid = hash === expectedHash
+      console.log('Firebase: Hash validation result:', isValid)
       
       return {
         success: true,
-        isValid: hash === expectedHash,
+        isValid,
         folderData
       }
     } catch (error) {

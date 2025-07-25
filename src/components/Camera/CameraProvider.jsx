@@ -6,6 +6,7 @@ import { useNativeCamera } from '../../hooks/useNativeCamera'
 import { useSearchParams } from 'react-router-dom'
 import { useAnalytics } from '../../hooks/useAnalytics'
 import { storage } from '../../utils/storage'
+import { getPlatformInfo } from '../../utils/platform'
 
 export const CameraProvider = ({ children, initialFolderId = null }) => {
   const [capturedImage, setCapturedImage] = useState(null)
@@ -111,7 +112,9 @@ export const CameraProvider = ({ children, initialFolderId = null }) => {
 
   const validateHashAndLoadLimit = async (folderId, hash) => {
     try {
-      console.log('CameraProvider: Validating hash and loading limit...')
+      const platformInfo = getPlatformInfo()
+      console.log('CameraProvider: Validating hash and loading limit for platform:', platformInfo.platform)
+      
       const result = await FirebaseService.validateHash(folderId, hash)
       
       if (result.success && result.isValid) {
@@ -123,14 +126,46 @@ export const CameraProvider = ({ children, initialFolderId = null }) => {
           await checkUserUploadLimit(folderId, userInfo.id)
         }
       } else {
-        console.log('CameraProvider: Hash validation failed')
-        setError('QR kod geçersiz veya süresi dolmuş.')
-        setIsAuthenticated(false) // Kullanıcının giriş yapmasını engelle
+        console.log('CameraProvider: Hash validation failed, trying fallback...')
+        
+        // Android'de hash doğrulama sorunları olabilir, fallback kullan
+        const folderResult = await FirebaseService.getFolder(folderId)
+        if (folderResult.success) {
+          console.log('CameraProvider: Fallback successful, loading folder info')
+          setUploadLimit(folderResult.data.limit)
+          
+          // Check current user upload count if authenticated
+          if (userInfo) {
+            await checkUserUploadLimit(folderId, userInfo.id)
+          }
+        } else {
+          console.log('CameraProvider: Both hash validation and fallback failed')
+          setError('QR kod geçersiz veya süresi dolmuş.')
+          setIsAuthenticated(false)
+        }
       }
     } catch (error) {
       console.error('CameraProvider: Hash validation error:', error)
-      setError('Limit bilgileri yüklenirken hata oluştu.')
-      setIsAuthenticated(false) // Kullanıcının giriş yapmasını engelle
+      
+      // Fallback: Hata durumunda da klasör bilgilerini yüklemeyi dene
+      try {
+        const folderResult = await FirebaseService.getFolder(folderId)
+        if (folderResult.success) {
+          console.log('CameraProvider: Error fallback successful')
+          setUploadLimit(folderResult.data.limit)
+          
+          if (userInfo) {
+            await checkUserUploadLimit(folderId, userInfo.id)
+          }
+        } else {
+          setError('Limit bilgileri yüklenirken hata oluştu.')
+          setIsAuthenticated(false)
+        }
+      } catch (fallbackError) {
+        console.error('CameraProvider: Fallback also failed:', fallbackError)
+        setError('Limit bilgileri yüklenirken hata oluştu.')
+        setIsAuthenticated(false)
+      }
     }
   }
 

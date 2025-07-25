@@ -1,7 +1,7 @@
 import { useCamera } from '../../hooks/useCamera'
 
 export const ImagePreview = () => {
-  const { capturedImage, resetPhoto } = useCamera()
+  const { capturedImage, resetPhoto, uploadToGoogleDrive, isLoading, uploadStatus, isGoogleDriveInitialized, folderId, isAuthenticated } = useCamera()
 
   if (!capturedImage) return null
 
@@ -17,13 +17,73 @@ export const ImagePreview = () => {
         <div className="absolute inset-0 bg-black bg-opacity-10 rounded-xl pointer-events-none" />
       </div>
       
-      <div className="flex justify-center mt-6">
+      {/* Auth Status */}
+      {isAuthenticated && (
+        <div className="mt-4 p-3 bg-green-100 border border-green-400 text-green-700 rounded-lg text-center">
+          ✅ Google Drive'a bağlandı
+        </div>
+      )}
+      
+      {/* Upload Status */}
+      {uploadStatus && (
+        <div className={`mt-4 p-3 rounded-lg text-center ${
+          uploadStatus.type === 'success' 
+            ? 'bg-green-100 border border-green-400 text-green-700' 
+            : 'bg-blue-100 border border-blue-400 text-blue-700'
+        }`}>
+          {typeof uploadStatus === 'string' ? uploadStatus : uploadStatus.message}
+          {uploadStatus.type === 'success' && uploadStatus.webViewLink && (
+            <div className="mt-2">
+              <a 
+                href={uploadStatus.webViewLink} 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="text-green-600 hover:text-green-800 underline"
+              >
+                Google Drive'da Görüntüle
+              </a>
+            </div>
+          )}
+        </div>
+      )}
+      
+      <div className="flex gap-4 justify-center mt-6 flex-wrap">
+        <button
+          onClick={uploadToGoogleDrive}
+          disabled={isLoading || !isGoogleDriveInitialized || !folderId.trim()}
+          className={`
+            flex items-center px-6 py-3 text-white bg-gradient-to-r from-green-500 to-green-600
+            rounded-full shadow-lg hover:shadow-xl transform hover:-translate-y-1 transition-all duration-300
+            focus:outline-none focus:ring-4 focus:ring-green-300
+            disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none
+          `}
+        >
+          {isLoading ? (
+            <>
+              <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+              Yükleniyor...
+            </>
+          ) : (
+            <>
+              <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+              </svg>
+              Google Drive'a Yükle
+            </>
+          )}
+        </button>
+        
         <button
           onClick={resetPhoto}
+          disabled={isLoading}
           className="
             flex items-center px-6 py-3 text-white bg-gradient-to-r from-blue-500 to-blue-600
             rounded-full shadow-lg hover:shadow-xl transform hover:-translate-y-1 transition-all duration-300
             focus:outline-none focus:ring-4 focus:ring-blue-300
+            disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none
           "
         >
           <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -32,6 +92,18 @@ export const ImagePreview = () => {
           Yeni Fotoğraf Çek
         </button>
       </div>
+      
+      {!isGoogleDriveInitialized && (
+        <div className="mt-4 p-3 bg-yellow-100 border border-yellow-400 text-yellow-700 rounded-lg text-center">
+          Google Drive bağlantısı kuruluyor...
+        </div>
+      )}
+      
+      {!folderId.trim() && (
+        <div className="mt-4 p-3 bg-orange-100 border border-orange-400 text-orange-700 rounded-lg text-center">
+          ⚠️ Google Drive'a yüklemek için önce klasör ID'sini girin.
+        </div>
+      )}
     </div>
   )
 } 

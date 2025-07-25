@@ -1,3 +1,5 @@
+import { logger } from '../utils/logger.js'
+
 export class NativeCameraService {
   static async openNativeCamera() {
     const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
@@ -41,6 +43,7 @@ export class NativeCameraService {
       const handleFileSelect = (event) => {
         const file = event.target.files[0];
         if (file) {
+          // Kalite kaybını önlemek için dosyayı direkt olarak kullan
           const reader = new FileReader();
           reader.onload = (e) => {
             resolve({
@@ -48,7 +51,9 @@ export class NativeCameraService {
               dataUrl: e.target.result,
               fileName: file.name,
               fileSize: file.size,
-              mimeType: file.type
+              mimeType: file.type,
+              originalFile: file, // Orijinal dosyayı da sakla
+              quality: 'original' // Kalite bilgisi
             });
           };
           reader.onerror = () => {
@@ -57,6 +62,7 @@ export class NativeCameraService {
               error: 'Fotoğraf okunamadı'
             });
           };
+          // Kalite kaybını önlemek için sıkıştırma yapmadan oku
           reader.readAsDataURL(file);
         } else {
           resolve({
@@ -92,6 +98,7 @@ export class NativeCameraService {
       const handleFileSelect = (event) => {
         const file = event.target.files[0];
         if (file) {
+          // Kalite kaybını önlemek için dosyayı direkt olarak kullan
           const reader = new FileReader();
           reader.onload = (e) => {
             resolve({
@@ -99,7 +106,9 @@ export class NativeCameraService {
               dataUrl: e.target.result,
               fileName: file.name,
               fileSize: file.size,
-              mimeType: file.type
+              mimeType: file.type,
+              originalFile: file, // Orijinal dosyayı da sakla
+              quality: 'original' // Kalite bilgisi
             });
           };
           reader.onerror = () => {
@@ -108,6 +117,7 @@ export class NativeCameraService {
               error: 'Fotoğraf okunamadı'
             });
           };
+          // Kalite kaybını önlemek için sıkıştırma yapmadan oku
           reader.readAsDataURL(file);
         } else {
           resolve({
@@ -138,6 +148,7 @@ export class NativeCameraService {
       const handleFileSelect = (event) => {
         const file = event.target.files[0];
         if (file) {
+          // Kalite kaybını önlemek için dosyayı direkt olarak kullan
           const reader = new FileReader();
           reader.onload = (e) => {
             resolve({
@@ -145,7 +156,9 @@ export class NativeCameraService {
               dataUrl: e.target.result,
               fileName: file.name,
               fileSize: file.size,
-              mimeType: file.type
+              mimeType: file.type,
+              originalFile: file, // Orijinal dosyayı da sakla
+              quality: 'original' // Kalite bilgisi
             });
           };
           reader.onerror = () => {
@@ -154,6 +167,7 @@ export class NativeCameraService {
               error: 'Fotoğraf okunamadı'
             });
           };
+          // Kalite kaybını önlemek için sıkıştırma yapmadan oku
           reader.readAsDataURL(file);
         } else {
           resolve({
@@ -193,7 +207,7 @@ export class NativeCameraService {
         const permission = await navigator.permissions.query({ name: 'camera' });
         return permission.state;
       } catch (error) {
-        console.log('Permission API not supported');
+        logger.log('Permission API not supported');
         return 'unknown';
       }
     }
@@ -207,7 +221,7 @@ export class NativeCameraService {
         stream.getTracks().forEach(track => track.stop());
         return true;
       } catch (error) {
-        console.log('Camera permission denied:', error);
+        logger.log('Camera permission denied:', error);
         return false;
       }
     }

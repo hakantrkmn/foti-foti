@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { logger } from '../../utils/logger.js'
 
 export const PWAInstallPrompt = () => {
   const [showPrompt, setShowPrompt] = useState(false)
@@ -33,9 +34,9 @@ export const PWAInstallPrompt = () => {
       const { outcome } = await deferredPrompt.userChoice
       
       if (outcome === 'accepted') {
-        console.log('PWA kurulumu kabul edildi')
+        logger.log('PWA kurulumu kabul edildi')
       } else {
-        console.log('PWA kurulumu reddedildi')
+        logger.log('PWA kurulumu reddedildi')
       }
       
       setDeferredPrompt(null)
@@ -63,10 +64,10 @@ export const PWAInstallPrompt = () => {
         
         <div className="flex-1 min-w-0">
           <h3 className="text-sm font-medium text-gray-900">
-            Daha İyi Kamera Deneyimi
+            Better Camera Experience
           </h3>
           <p className="text-xs text-gray-600 mt-1">
-            Uygulamayı ana ekrana ekleyerek gerçek kamera özelliklerine erişin
+            Add the app to your home screen to access real camera features
           </p>
         </div>
         
@@ -75,13 +76,13 @@ export const PWAInstallPrompt = () => {
             onClick={handleInstall}
             className="px-3 py-1 text-xs font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
-            Kur
+            Install
           </button>
           <button
             onClick={handleDismiss}
             className="px-3 py-1 text-xs font-medium text-gray-600 hover:text-gray-800 focus:outline-none"
           >
-            Kapat
+            Close
           </button>
         </div>
       </div>

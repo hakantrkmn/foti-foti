@@ -1,4 +1,7 @@
 // Google Drive API Service
+import { logger } from '../utils/logger.js'
+import { storage } from '../utils/storage.js'
+
 class GoogleDriveService {
   constructor() {
     this.clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID
@@ -9,6 +12,25 @@ class GoogleDriveService {
     this.gapiInited = false
     this.gisInited = false
     this.accessToken = null
+    this.tokenExpiry = null
+    this.refreshToken = null
+    
+    // Load tokens from localStorage on initialization
+    this.loadTokensFromStorage()
+  }
+
+  loadTokensFromStorage() {
+    try {
+      this.accessToken = storage.getAuthToken()
+      this.refreshToken = storage.getRefreshToken()
+      this.tokenExpiry = storage.getTokenExpiry()
+      
+      if (this.accessToken && this.refreshToken) {
+        logger.log('GoogleDriveService: Tokens loaded from localStorage')
+      }
+    } catch (error) {
+      logger.error('GoogleDriveService: Failed to load tokens from localStorage:', error)
+    }
   }
 
   async initialize() {
@@ -35,34 +57,34 @@ class GoogleDriveService {
         return
       }
 
-      console.log('GoogleDriveService: Loading GAPI client...')
-      console.log('GoogleDriveService: API Key:', this.apiKey ? 'Present' : 'Missing')
-      console.log('GoogleDriveService: Discovery Docs:', this.discoveryDocs)
+      logger.log('GoogleDriveService: Loading GAPI client...')
+      logger.log('GoogleDriveService: API Key:', this.apiKey ? 'Present' : 'Missing')
+      logger.log('GoogleDriveService: Discovery Docs:', this.discoveryDocs)
 
       const script = document.createElement('script')
       script.src = 'https://apis.google.com/js/api.js'
-      script.onload = () => {
-        console.log('GoogleDriveService: GAPI script loaded')
-        window.gapi.load('client', async () => {
-          try {
-            console.log('GoogleDriveService: Initializing GAPI client...')
-            await window.gapi.client.init({
-              apiKey: this.apiKey,
-              discoveryDocs: this.discoveryDocs,
-            })
-            console.log('GoogleDriveService: GAPI client initialized successfully')
-            this.gapiInited = true
-            resolve()
-          } catch (error) {
-            console.error('GoogleDriveService: GAPI client initialization failed:', error)
-            reject(error)
-          }
-        })
-      }
-      script.onerror = (error) => {
-        console.error('GoogleDriveService: Failed to load GAPI script:', error)
-        reject(error)
-      }
+              script.onload = () => {
+          logger.log('GoogleDriveService: GAPI script loaded')
+          window.gapi.load('client', async () => {
+            try {
+              logger.log('GoogleDriveService: Initializing GAPI client...')
+              await window.gapi.client.init({
+                apiKey: this.apiKey,
+                discoveryDocs: this.discoveryDocs,
+              })
+              logger.log('GoogleDriveService: GAPI client initialized successfully')
+              this.gapiInited = true
+              resolve()
+            } catch (error) {
+              logger.error('GoogleDriveService: GAPI client initialization failed:', error)
+              reject(error)
+            }
+          })
+        }
+              script.onerror = (error) => {
+          logger.error('GoogleDriveService: Failed to load GAPI script:', error)
+          reject(error)
+        }
       document.head.appendChild(script)
     })
   }
@@ -84,6 +106,9 @@ class GoogleDriveService {
           callback: (tokenResponse) => {
             if (tokenResponse && tokenResponse.access_token) {
               this.accessToken = tokenResponse.access_token
+              // Set token expiry (typically 1 hour from now)
+              this.tokenExpiry = new Date(Date.now() + (tokenResponse.expires_in * 1000))
+              this.refreshToken = tokenResponse.refresh_token
             }
           },
         })
@@ -93,6 +118,52 @@ class GoogleDriveService {
       script.onerror = reject
       document.head.appendChild(script)
     })
+  }
+
+  // Check if token is expired or about to expire (within 5 minutes)
+  isTokenExpired() {
+    if (!this.tokenExpiry) return true
+    const fiveMinutesFromNow = new Date(Date.now() + (5 * 60 * 1000))
+    return this.tokenExpiry <= fiveMinutesFromNow
+  }
+
+  // Try to refresh the token
+  async refreshAccessToken() {
+    if (!this.refreshToken) {
+      throw new Error('No refresh token available')
+    }
+
+    try {
+      const response = await fetch('https://oauth2.googleapis.com/token', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: new URLSearchParams({
+          client_id: this.clientId,
+          client_secret: '', // Not needed for client-side apps
+          refresh_token: this.refreshToken,
+          grant_type: 'refresh_token',
+        }),
+      })
+
+      if (!response.ok) {
+        throw new Error('Token refresh failed')
+      }
+
+      const data = await response.json()
+      this.accessToken = data.access_token
+      this.tokenExpiry = new Date(Date.now() + (data.expires_in * 1000))
+      
+      // Save new token to localStorage
+      storage.setAuthToken(data.access_token, this.refreshToken, this.tokenExpiry)
+      
+      logger.log('GoogleDriveService: Token refreshed successfully')
+      return true
+    } catch (error) {
+      logger.error('GoogleDriveService: Token refresh failed:', error)
+      return false
+    }
   }
 
   async authenticate() {
@@ -109,11 +180,11 @@ class GoogleDriveService {
           return
         }
         
-        console.log('Google auth callback: Processing response', response)
+        logger.log('Google auth callback: Processing response', response)
         isResolved = true
         
         if (response.error) {
-          console.log('Google auth callback: Error received:', response.error)
+          logger.log('Google auth callback: Error received:', response.error)
           // Check for specific error types
           if (response.error === 'popup_closed_by_user' || response.error === 'popup_blocked') {
             reject(new Error('Giriş işlemi iptal edildi'))
@@ -125,15 +196,21 @@ class GoogleDriveService {
             reject(new Error(response.error))
           }
         } else {
-          console.log('Google auth callback: Success, setting access token')
+          logger.log('Google auth callback: Success, setting access token')
           this.accessToken = response.access_token
+          // Set token expiry (typically 1 hour from now)
+          this.tokenExpiry = new Date(Date.now() + (response.expires_in * 1000))
+          this.refreshToken = response.refresh_token
+          
+          // Save tokens to localStorage
+          storage.setAuthToken(response.access_token, response.refresh_token, this.tokenExpiry)
           
           // Get user info after successful authentication
           this.getUserInfo().then(userInfo => {
             this.userInfo = userInfo
             resolve({ accessToken: response.access_token, userInfo })
           }).catch(error => {
-            console.error('Failed to get user info:', error)
+            logger.error('Failed to get user info:', error)
             resolve({ accessToken: response.access_token, userInfo: null })
           })
         }
@@ -142,14 +219,14 @@ class GoogleDriveService {
       // Set timeout for this specific request
       const timeout = setTimeout(() => {
         if (!isResolved) {
-          console.log('Google auth: Overall timeout after 60 seconds')
+          logger.log('Google auth: Overall timeout after 60 seconds')
           isResolved = true
           reject(new Error('Giriş işlemi zaman aşımına uğradı'))
         }
       }, 60000)
 
       try {
-        console.log('Google auth: Requesting access token...')
+        logger.log('Google auth: Requesting access token...')
         
         // Create a temporary token client for this request
         const tempTokenClient = window.google.accounts.oauth2.initTokenClient({
@@ -187,7 +264,7 @@ class GoogleDriveService {
       })
 
       if (!response.ok) {
-        console.error('User info response not ok:', response.status, response.statusText)
+        logger.error('User info response not ok:', response.status, response.statusText)
         throw new Error(`Failed to get user info: ${response.status}`)
       }
 
@@ -203,7 +280,7 @@ class GoogleDriveService {
         picture: userInfo.picture || null
       }
     } catch (error) {
-      console.error('Get user info error:', error)
+      logger.error('Get user info error:', error)
       
       // Return a fallback user info if we can't get it from Google
       const fallbackId = `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
@@ -216,25 +293,45 @@ class GoogleDriveService {
     }
   }
 
-  async uploadImage(imageData, fileName, folderId) {
+  async uploadImage(imageData, fileName, folderId, originalFile = null) {
     try {
-      // Convert base64 to blob
-      const base64Data = imageData.split(',')[1]
-      const byteCharacters = atob(base64Data)
-      const byteNumbers = new Array(byteCharacters.length)
-      
-      for (let i = 0; i < byteCharacters.length; i++) {
-        byteNumbers[i] = byteCharacters.charCodeAt(i)
+      // Check if token is expired and try to refresh
+      if (this.isTokenExpired()) {
+        logger.log('GoogleDriveService: Token expired, attempting refresh...')
+        const refreshSuccess = await this.refreshAccessToken()
+        if (!refreshSuccess) {
+          throw new Error('Token yenileme başarısız. Lütfen tekrar giriş yapın.')
+        }
       }
+
+      let blob, mimeType;
       
-      const byteArray = new Uint8Array(byteNumbers)
-      const blob = new Blob([byteArray], { type: 'image/jpeg' })
+      // Eğer orijinal dosya varsa, onu kullan (kalite kaybını önlemek için)
+      if (originalFile) {
+        logger.log('GoogleDrive: Using original file for upload, size:', originalFile.size, 'type:', originalFile.type);
+        blob = originalFile;
+        mimeType = originalFile.type;
+      } else {
+        // Fallback: base64'ten blob oluştur
+        logger.log('GoogleDrive: Using base64 data for upload');
+        const base64Data = imageData.split(',')[1];
+        const byteCharacters = atob(base64Data);
+        const byteNumbers = new Array(byteCharacters.length);
+        
+        for (let i = 0; i < byteCharacters.length; i++) {
+          byteNumbers[i] = byteCharacters.charCodeAt(i);
+        }
+        
+        const byteArray = new Uint8Array(byteNumbers);
+        blob = new Blob([byteArray], { type: 'image/jpeg' });
+        mimeType = 'image/jpeg';
+      }
 
       // Create form data
       const metadata = {
         name: fileName,
         parents: [folderId],
-        mimeType: 'image/jpeg'
+        mimeType: mimeType
       }
 
       const form = new FormData()
@@ -252,7 +349,7 @@ class GoogleDriveService {
 
       if (!response.ok) {
         const errorText = await response.text()
-        console.error('Google Drive upload error details:', {
+        logger.error('Google Drive upload error details:', {
           status: response.status,
           statusText: response.statusText,
           errorText: errorText
@@ -260,11 +357,37 @@ class GoogleDriveService {
         
         let errorMessage = 'Upload failed'
         if (response.status === 403) {
-          errorMessage = 'Bu klasöre yazma izniniz yok. Lütfen klasör ID\'sini kontrol edin veya klasör sahibiyle iletişime geçin.'
+          errorMessage = 'You do not have permission to write to this folder. Please check the folder ID or contact the folder owner.'
         } else if (response.status === 404) {
-          errorMessage = 'Klasör bulunamadı. Lütfen klasör ID\'sini kontrol edin.'
+          errorMessage = 'Folder not found. Please check the folder ID.'
         } else if (response.status === 401) {
-          errorMessage = 'Google Drive erişim izniniz geçersiz. Lütfen tekrar giriş yapın.'
+          // Try to refresh token and retry once
+          logger.log('GoogleDriveService: 401 error, attempting token refresh and retry...')
+          const refreshSuccess = await this.refreshAccessToken()
+          if (refreshSuccess) {
+            // Retry the upload with new token
+            const retryResponse = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${this.accessToken}`
+              },
+              body: form
+            })
+            
+            if (retryResponse.ok) {
+              const result = await retryResponse.json()
+              return {
+                success: true,
+                fileId: result.id,
+                webViewLink: result.webViewLink,
+                message: 'Photo successfully uploaded to Google Drive!'
+              }
+            } else {
+              errorMessage = 'Your Google Drive access is invalid. Please sign in again.'
+            }
+          } else {
+            errorMessage = 'Your Google Drive access is invalid. Please sign in again.'
+          }
         } else {
           errorMessage = `Upload failed: ${response.status} ${response.statusText}`
         }
@@ -277,14 +400,14 @@ class GoogleDriveService {
         success: true,
         fileId: result.id,
         webViewLink: result.webViewLink,
-        message: 'Fotoğraf başarıyla Google Drive\'a yüklendi!'
+        message: 'Photo successfully uploaded to Google Drive!'
       }
     } catch (error) {
-      console.error('Upload error:', error)
+      logger.error('Upload error:', error)
       return {
         success: false,
         error: error.message,
-        message: 'Fotoğraf yüklenirken bir hata oluştu.'
+        message: 'An error occurred while uploading the photo.'
       }
     }
   }
@@ -301,6 +424,11 @@ class GoogleDriveService {
       }
     }
     this.accessToken = null
+    this.tokenExpiry = null
+    this.refreshToken = null
+    
+    // Clear tokens from localStorage
+    storage.clearUserData()
   }
 }
 

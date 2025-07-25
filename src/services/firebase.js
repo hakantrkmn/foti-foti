@@ -1,5 +1,6 @@
 import { initializeApp } from 'firebase/app'
 import { getFirestore, doc, setDoc, getDoc, updateDoc, increment } from 'firebase/firestore'
+import { logger } from '../utils/logger.js'
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -63,7 +64,7 @@ export class FirebaseService {
         folderData
       }
     } catch (error) {
-      console.error('Firebase createFolder error:', error)
+      logger.error('Firebase createFolder error:', error)
       return {
         success: false,
         error: error.message
@@ -89,7 +90,7 @@ export class FirebaseService {
         }
       }
     } catch (error) {
-      console.error('Firebase getFolder error:', error)
+      logger.error('Firebase getFolder error:', error)
       return {
         success: false,
         error: error.message
@@ -110,7 +111,7 @@ export class FirebaseService {
         success: true
       }
     } catch (error) {
-      console.error('Firebase updateFolderLimit error:', error)
+      logger.error('Firebase updateFolderLimit error:', error)
       return {
         success: false,
         error: error.message
@@ -121,37 +122,37 @@ export class FirebaseService {
   // Kullanıcının yükleme sayısını artır
   static async incrementUserUploadCount(folderId, userId) {
     try {
-      console.log('Firebase: incrementUserUploadCount called with:', { folderId, userId })
+      logger.log('Firebase: incrementUserUploadCount called with:', { folderId, userId })
       
       const userUploadRef = doc(db, 'folders', folderId, 'uploads', userId)
-      console.log('Firebase: User upload ref path:', userUploadRef.path)
+      logger.log('Firebase: User upload ref path:', userUploadRef.path)
       
       // Kullanıcının mevcut yükleme sayısını kontrol et
       const userDoc = await getDoc(userUploadRef)
-      console.log('Firebase: User doc exists:', userDoc.exists())
+      logger.log('Firebase: User doc exists:', userDoc.exists())
       
       if (userDoc.exists()) {
-        console.log('Firebase: Updating existing user record')
+        logger.log('Firebase: Updating existing user record')
         // Mevcut kullanıcı, sayıyı artır
         await updateDoc(userUploadRef, {
           count: increment(1)
         })
-        console.log('Firebase: User record updated successfully')
+        logger.log('Firebase: User record updated successfully')
       } else {
-        console.log('Firebase: Creating new user record')
+        logger.log('Firebase: Creating new user record')
         // Yeni kullanıcı, ilk yükleme
         await setDoc(userUploadRef, {
           userId,
           count: 1
         })
-        console.log('Firebase: New user record created successfully')
+        logger.log('Firebase: New user record created successfully')
       }
       
       return {
         success: true
       }
     } catch (error) {
-      console.error('Firebase incrementUserUploadCount error:', error)
+      logger.error('Firebase incrementUserUploadCount error:', error)
       return {
         success: false,
         error: error.message
@@ -185,7 +186,7 @@ export class FirebaseService {
         remaining: folderData.limit - userCount
       }
     } catch (error) {
-      console.error('Firebase checkUserUploadLimit error:', error)
+      logger.error('Firebase checkUserUploadLimit error:', error)
       return {
         success: false,
         error: error.message
@@ -206,7 +207,7 @@ export class FirebaseService {
           count: 0
         })
         
-        console.log('Firebase: User record created for:', userId)
+        logger.log('Firebase: User record created for:', userId)
         return {
           success: true,
           created: true
@@ -218,7 +219,7 @@ export class FirebaseService {
         created: false
       }
     } catch (error) {
-      console.error('Firebase createUserRecord error:', error)
+      logger.error('Firebase createUserRecord error:', error)
       return {
         success: false,
         error: error.message
@@ -229,12 +230,12 @@ export class FirebaseService {
   // Hash doğrulama
   static async validateHash(folderId, hash) {
     try {
-      console.log('Firebase: Validating hash for folderId:', folderId, 'hash:', hash)
+      logger.log('Firebase: Validating hash for folderId:', folderId, 'hash:', hash)
       
       const folderDoc = await getDoc(doc(db, 'folders', folderId))
       
       if (!folderDoc.exists()) {
-        console.log('Firebase: Folder not found')
+        logger.log('Firebase: Folder not found')
         return {
           success: false,
           error: 'Klasör bulunamadı'
@@ -242,7 +243,7 @@ export class FirebaseService {
       }
       
       const folderData = folderDoc.data()
-      console.log('Firebase: Folder data:', folderData)
+      logger.log('Firebase: Folder data:', folderData)
       
       // Hash oluşturma için aynı veri yapısını kullan
       const hashData = {
@@ -252,10 +253,10 @@ export class FirebaseService {
       }
       
       const expectedHash = generateHash(hashData)
-      console.log('Firebase: Expected hash:', expectedHash, 'Received hash:', hash)
+      logger.log('Firebase: Expected hash:', expectedHash, 'Received hash:', hash)
       
       const isValid = hash === expectedHash
-      console.log('Firebase: Hash validation result:', isValid)
+      logger.log('Firebase: Hash validation result:', isValid)
       
       return {
         success: true,
@@ -263,7 +264,7 @@ export class FirebaseService {
         folderData
       }
     } catch (error) {
-      console.error('Firebase validateHash error:', error)
+      logger.error('Firebase validateHash error:', error)
       return {
         success: false,
         error: error.message

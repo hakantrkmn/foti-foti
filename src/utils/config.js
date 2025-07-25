@@ -1,8 +1,10 @@
 // Configuration utilities
+import { logger } from './logger.js'
+
 export const getBaseUrl = () => {
   const baseUrl = import.meta.env.VITE_BASE_URL || window.location.origin
-  console.log('Config: Base URL:', baseUrl)
-  console.log('Config: Environment:', import.meta.env.MODE)
+  logger.log('Config: Base URL:', baseUrl)
+  logger.log('Config: Environment:', import.meta.env.MODE)
   return baseUrl
 }
 

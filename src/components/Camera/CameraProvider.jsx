@@ -7,9 +7,12 @@ import { useSearchParams } from 'react-router-dom'
 import { useAnalytics } from '../../hooks/useAnalytics'
 import { storage } from '../../utils/storage'
 import { getPlatformInfo } from '../../utils/platform'
+import { ImageQualityManager } from '../../utils/imageQuality'
+import { logger } from '../../utils/logger.js'
 
 export const CameraProvider = ({ children, initialFolderId = null }) => {
   const [capturedImage, setCapturedImage] = useState(null)
+  const [originalImageFile, setOriginalImageFile] = useState(null) // For original file
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState(null)
   const [isGoogleDriveInitialized, setIsGoogleDriveInitialized] = useState(false)
@@ -20,7 +23,7 @@ export const CameraProvider = ({ children, initialFolderId = null }) => {
   const [uploadLimit, setUploadLimit] = useState(null)
   const [currentUploadCount, setCurrentUploadCount] = useState(0)
   
-  // Asenkron upload sistemi için yeni state'ler
+  // New state for async upload system'ler
   const [uploadQueue, setUploadQueue] = useState([])
   const [activeUploads, setActiveUploads] = useState(0)
   const [uploadHistory, setUploadHistory] = useState([])
@@ -30,60 +33,60 @@ export const CameraProvider = ({ children, initialFolderId = null }) => {
   const { openCamera } = useNativeCamera()
 
   useEffect(() => {
-    console.log('CameraProvider: useEffect triggered')
+    logger.log('CameraProvider: useEffect triggered')
     
     // Check if user is already logged in from localStorage
     const savedUserInfo = storage.getUserInfo()
     const savedAuthToken = storage.getAuthToken()
     
     if (savedUserInfo && savedAuthToken) {
-      console.log('CameraProvider: Found saved user info in localStorage')
+      logger.log('CameraProvider: Found saved user info in localStorage')
       setUserInfo(savedUserInfo)
       setIsAuthenticated(true)
     }
     
     // Check URL parameters for folderId (required)
     const urlFolderId = searchParams.get('folderId')
-    console.log('CameraProvider: URL folderId:', urlFolderId)
+    logger.log('CameraProvider: URL folderId:', urlFolderId)
     
     if (urlFolderId) {
-      console.log('CameraProvider: Found folder ID in URL params:', urlFolderId)
+      logger.log('CameraProvider: Found folder ID in URL params:', urlFolderId)
       setFolderId(urlFolderId)
       
       // Check for hash parameter
       const hash = searchParams.get('hash')
       if (hash) {
-        console.log('CameraProvider: Found hash in URL params')
+        logger.log('CameraProvider: Found hash in URL params')
         validateHashAndLoadLimit(urlFolderId, hash)
       } else {
-        console.log('CameraProvider: No hash found, trying to load folder info directly')
+        logger.log('CameraProvider: No hash found, trying to load folder info directly')
         loadFolderInfoDirectly(urlFolderId)
       }
     } else {
-      console.log('CameraProvider: No folderId in URL params')
+      logger.log('CameraProvider: No folderId in URL params')
       setError('Klasör ID bulunamadı. Lütfen QR kodu tekrar tarayın.')
     }
 
     // Initialize Google Drive service
     const initGoogleDrive = async () => {
       try {
-        console.log('CameraProvider: Initializing Google Drive service...')
+        logger.log('CameraProvider: Initializing Google Drive service...')
         const initialized = await googleDriveService.initialize()
-        console.log('CameraProvider: Google Drive initialized:', initialized)
+        logger.log('CameraProvider: Google Drive initialized:', initialized)
         setIsGoogleDriveInitialized(initialized)
         
         // If user is already authenticated, set token and load their data
         if (savedUserInfo && savedAuthToken) {
-          console.log('CameraProvider: Setting saved auth token')
+          logger.log('CameraProvider: Setting saved auth token')
           googleDriveService.setAccessToken(savedAuthToken)
           
           if (urlFolderId) {
-            console.log('CameraProvider: Loading saved user data for folder:', urlFolderId)
+            logger.log('CameraProvider: Loading saved user data for folder:', urlFolderId)
             await loadFirebaseData(urlFolderId, savedUserInfo.id)
           }
         }
       } catch (error) {
-        console.error('CameraProvider: Google Drive initialization failed:', error)
+        logger.error('CameraProvider: Google Drive initialization failed:', error)
         setError('Google Drive başlatılamadı: ' + error.message)
       }
     }
@@ -94,7 +97,7 @@ export const CameraProvider = ({ children, initialFolderId = null }) => {
   // Load folder info when folderId changes (but don't reset auth state)
   useEffect(() => {
     if (folderId) {
-      console.log('CameraProvider: Folder ID changed, loading folder info')
+      logger.info('CameraProvider: Folder ID changed, loading folder info')
       setError(null)
       setUploadStatus(null)
       
@@ -104,7 +107,7 @@ export const CameraProvider = ({ children, initialFolderId = null }) => {
       // If user is already authenticated, load their data for this folder
       const savedUserInfo = storage.getUserInfo()
       if (savedUserInfo && isAuthenticated) {
-        console.log('CameraProvider: Loading user data for new folder:', folderId)
+        logger.info('CameraProvider: Loading user data for new folder:', folderId)
         loadFirebaseData(folderId, savedUserInfo.id)
       }
     }
@@ -113,12 +116,12 @@ export const CameraProvider = ({ children, initialFolderId = null }) => {
   const validateHashAndLoadLimit = async (folderId, hash) => {
     try {
       const platformInfo = getPlatformInfo()
-      console.log('CameraProvider: Validating hash and loading limit for platform:', platformInfo.platform)
+      logger.info('CameraProvider: Validating hash and loading limit for platform:', platformInfo.platform)
       
       const result = await FirebaseService.validateHash(folderId, hash)
       
       if (result.success && result.isValid) {
-        console.log('CameraProvider: Hash validated, loading limit info')
+        logger.info('CameraProvider: Hash validated, loading limit info')
         setUploadLimit(result.folderData.limit)
         
         // Check current user upload count if authenticated
@@ -126,12 +129,12 @@ export const CameraProvider = ({ children, initialFolderId = null }) => {
           await checkUserUploadLimit(folderId, userInfo.id)
         }
       } else {
-        console.log('CameraProvider: Hash validation failed, trying fallback...')
+        logger.info('CameraProvider: Hash validation failed, trying fallback...')
         
         // Android'de hash doğrulama sorunları olabilir, fallback kullan
         const folderResult = await FirebaseService.getFolder(folderId)
         if (folderResult.success) {
-          console.log('CameraProvider: Fallback successful, loading folder info')
+          logger.info('CameraProvider: Fallback successful, loading folder info')
           setUploadLimit(folderResult.data.limit)
           
           // Check current user upload count if authenticated
@@ -139,7 +142,7 @@ export const CameraProvider = ({ children, initialFolderId = null }) => {
             await checkUserUploadLimit(folderId, userInfo.id)
           }
         } else {
-          console.log('CameraProvider: Both hash validation and fallback failed')
+          logger.info('CameraProvider: Both hash validation and fallback failed')
           setError('QR kod geçersiz veya süresi dolmuş.')
           setIsAuthenticated(false)
         }
@@ -151,7 +154,7 @@ export const CameraProvider = ({ children, initialFolderId = null }) => {
       try {
         const folderResult = await FirebaseService.getFolder(folderId)
         if (folderResult.success) {
-          console.log('CameraProvider: Error fallback successful')
+          logger.info('CameraProvider: Error fallback successful')
           setUploadLimit(folderResult.data.limit)
           
           if (userInfo) {
@@ -171,7 +174,7 @@ export const CameraProvider = ({ children, initialFolderId = null }) => {
 
   const loadFirebaseData = async (folderId, userId) => {
     try {
-      console.log('CameraProvider: Loading Firebase data for user:', userId)
+      logger.info('CameraProvider: Loading Firebase data for user:', userId)
       
       // Create user record if it doesn't exist
       const createResult = await FirebaseService.createUserRecord(folderId, userId)
@@ -182,19 +185,19 @@ export const CameraProvider = ({ children, initialFolderId = null }) => {
         
                      if (limitResult.success) {
                setCurrentUploadCount(limitResult.currentCount)
-               console.log('CameraProvider: User upload count loaded:', limitResult.currentCount)
+               logger.info('CameraProvider: User upload count loaded:', limitResult.currentCount)
                
                // Save folder info to localStorage
                storage.setFolderInfo(folderId, uploadLimit, limitResult.currentCount)
              } else {
-               console.log('CameraProvider: Failed to get upload count, setting to 0')
+               logger.info('CameraProvider: Failed to get upload count, setting to 0')
                setCurrentUploadCount(0)
                
                // Save folder info to localStorage with 0 count
                storage.setFolderInfo(folderId, uploadLimit, 0)
              }
       } else {
-        console.log('CameraProvider: Failed to create user record, setting count to 0')
+        logger.info('CameraProvider: Failed to create user record, setting count to 0')
         setCurrentUploadCount(0)
       }
     } catch (error) {
@@ -205,23 +208,23 @@ export const CameraProvider = ({ children, initialFolderId = null }) => {
 
   const loadFolderInfoDirectly = async (folderId) => {
     try {
-      console.log('CameraProvider: Loading folder info directly from Firebase for folderId:', folderId)
+      logger.info('CameraProvider: Loading folder info directly from Firebase for folderId:', folderId)
       const result = await FirebaseService.getFolder(folderId)
       
       if (result.success) {
-        console.log('CameraProvider: Folder info loaded successfully:', result.data)
+        logger.info('CameraProvider: Folder info loaded successfully:', result.data)
         setUploadLimit(result.data.limit)
-        console.log('CameraProvider: Upload limit set to:', result.data.limit)
+        logger.info('CameraProvider: Upload limit set to:', result.data.limit)
         
         // If user is authenticated, load their upload count
         if (userInfo) {
-          console.log('CameraProvider: User is authenticated, loading user data...')
+          logger.info('CameraProvider: User is authenticated, loading user data...')
           await loadFirebaseData(folderId, userInfo.id)
         } else {
-          console.log('CameraProvider: User not authenticated yet, will load user data after auth')
+          logger.info('CameraProvider: User not authenticated yet, will load user data after auth')
         }
       } else {
-        console.log('CameraProvider: Folder not found in Firebase, error:', result.error)
+        logger.info('CameraProvider: Folder not found in Firebase, error:', result.error)
         setError('Bu klasör bulunamadı. Lütfen QR kodu tekrar tarayın veya klasör sahibiyle iletişime geçin.')
         setUploadLimit(null)
         setIsAuthenticated(false) // Kullanıcının giriş yapmasını engelle
@@ -236,7 +239,7 @@ export const CameraProvider = ({ children, initialFolderId = null }) => {
 
   const checkUserUploadLimit = async (folderId, userId) => {
     try {
-      console.log('CameraProvider: Checking user upload limit...')
+      logger.info('CameraProvider: Checking user upload limit...')
       const result = await FirebaseService.checkUserUploadLimit(folderId, userId)
       
       if (result.success) {
@@ -255,15 +258,15 @@ export const CameraProvider = ({ children, initialFolderId = null }) => {
 
   const handleAutoAuth = async () => {
     try {
-      console.log('CameraProvider: Starting auto auth...')
+      logger.info('CameraProvider: Starting auto auth...')
       
       // Check if Google Drive is initialized
       if (!isGoogleDriveInitialized) {
-        console.log('CameraProvider: Google Drive not initialized, initializing first...')
+        logger.info('CameraProvider: Google Drive not initialized, initializing first...')
         setUploadStatus('Google Drive başlatılıyor...')
         
         const initialized = await googleDriveService.initialize()
-        console.log('CameraProvider: Google Drive initialization result:', initialized)
+        logger.info('CameraProvider: Google Drive initialization result:', initialized)
         setIsGoogleDriveInitialized(initialized)
         
         if (!initialized) {
@@ -276,15 +279,15 @@ export const CameraProvider = ({ children, initialFolderId = null }) => {
       setUploadStatus('Google Drive\'a giriş yapılıyor...')
       
       // Try to authenticate silently
-      console.log('CameraProvider: Calling googleDriveService.authenticate()...')
+      logger.info('CameraProvider: Calling googleDriveService.authenticate()...')
       const authResult = await googleDriveService.authenticate()
-      console.log('CameraProvider: Authentication successful!')
+      logger.info('CameraProvider: Authentication successful!')
       setIsAuthenticated(true)
       
               // Set user info
         if (authResult.userInfo) {
           setUserInfo(authResult.userInfo)
-          console.log('CameraProvider: User info set:', authResult.userInfo)
+          logger.info('CameraProvider: User info set:', authResult.userInfo)
           
           // Save user info and token to localStorage
           storage.setUserInfo(authResult.userInfo)
@@ -297,10 +300,10 @@ export const CameraProvider = ({ children, initialFolderId = null }) => {
           
           // Load Firebase data if we have folder info
           if (folderId) {
-            console.log('CameraProvider: Loading Firebase data after authentication for folderId:', folderId)
+            logger.info('CameraProvider: Loading Firebase data after authentication for folderId:', folderId)
             await loadFirebaseData(folderId, authResult.userInfo.id)
           } else {
-            console.log('CameraProvider: No folderId available after authentication')
+            logger.info('CameraProvider: No folderId available after authentication')
           }
         }
       
@@ -310,7 +313,7 @@ export const CameraProvider = ({ children, initialFolderId = null }) => {
       // Show success message
       setUploadStatus({
         type: 'success',
-        message: 'Otomatik giriş başarılı! Artık fotoğraf yükleyebilirsiniz.'
+                  message: 'Auto login successful! You can now upload photos.'
       })
       
       // Clear success message after 3 seconds
@@ -327,15 +330,15 @@ export const CameraProvider = ({ children, initialFolderId = null }) => {
         let errorMessage = 'Otomatik giriş başarısız: '
         
         if (error.message.includes('iptal edildi')) {
-          errorMessage = 'Giriş işlemi iptal edildi. Lütfen "Giriş Yap" butonuna tıklayarak tekrar deneyin.'
-        } else if (error.message.includes('zaman aşımı')) {
-          errorMessage = 'Giriş işlemi zaman aşımına uğradı. Lütfen tekrar deneyin.'
-        } else if (error.message.includes('izni reddedildi')) {
-          errorMessage = 'Google Drive erişim izni reddedildi. Lütfen izinleri kontrol edin.'
-        } else if (error.message.includes('başlatılamadı')) {
-          errorMessage = 'Google Drive başlatılamadı. Lütfen sayfayı yenileyip tekrar deneyin.'
-        } else if (error.message.includes('not initialized')) {
-          errorMessage = 'Google Drive henüz hazır değil. Lütfen sayfayı yenileyip tekrar deneyin.'
+          errorMessage = 'Login process was cancelled. Please try again by clicking the "Sign In" button.'
+                  } else if (error.message.includes('zaman aşımı')) {
+            errorMessage = 'Login process timed out. Please try again.'
+                  } else if (error.message.includes('izni reddedildi')) {
+            errorMessage = 'Google Drive access permission denied. Please check permissions.'
+                  } else if (error.message.includes('başlatılamadı')) {
+            errorMessage = 'Google Drive could not be initialized. Please refresh the page and try again.'
+                  } else if (error.message.includes('not initialized')) {
+            errorMessage = 'Google Drive is not ready yet. Please refresh the page and try again.'
         } else {
           errorMessage += error.message
         }
@@ -350,37 +353,48 @@ export const CameraProvider = ({ children, initialFolderId = null }) => {
 
   // updateFolderId function removed - folder ID is now read-only from URL
 
-  const openNativeCamera = async () => {
-    try {
-      console.log('CameraProvider: Opening native camera...')
-      setIsLoading(true)
-      setError(null)
-      
-      const result = await openCamera()
-      
-      if (result.success) {
-        console.log('CameraProvider: Native camera photo captured successfully')
-        setCapturedImage(result.dataUrl)
-        
-        // Track successful photo capture
-        trackPhotoUpload(folderId, true)
-      } else {
-        console.error('CameraProvider: Native camera failed:', result.error)
-        setError(result.error || 'Kamera açılamadı')
+        const openNativeCamera = async () => {
+        try {
+          logger.info('CameraProvider: Opening native camera...')
+          setIsLoading(true)
+          setError(null)
+          
+          const result = await openCamera()
+          
+          if (result.success) {
+            logger.info('CameraProvider: Native camera photo captured successfully')
+            logger.info('CameraProvider: Photo details - Size:', result.fileSize, 'Type:', result.mimeType, 'Quality:', result.quality)
+            setCapturedImage(result.dataUrl)
+            
+            // Orijinal dosyayı sakla (kalite için)
+            if (result.originalFile) {
+              logger.info('CameraProvider: Original file saved for high quality upload')
+              setOriginalImageFile(result.originalFile)
+              
+              // Görsel kalitesini kontrol et
+              const qualityReport = await ImageQualityManager.generateQualityReport(result.originalFile)
+              logger.info('CameraProvider: Image quality report:', qualityReport)
+            }
+            
+            // Track successful photo capture
+            trackPhotoUpload(folderId, true)
+          } else {
+            console.error('CameraProvider: Native camera failed:', result.error)
+            setError(result.error || 'Kamera açılamadı')
+          }
+        } catch (error) {
+          console.error('CameraProvider: Native camera error:', error)
+          setError('Kamera açılırken bir hata oluştu: ' + error.message)
+        } finally {
+          setIsLoading(false)
+        }
       }
-    } catch (error) {
-      console.error('CameraProvider: Native camera error:', error)
-      setError('Kamera açılırken bir hata oluştu: ' + error.message)
-    } finally {
-      setIsLoading(false)
-    }
-  }
 
 
 
   const uploadToGoogleDrive = () => {
     if (!capturedImage) {
-      setError('Yüklenecek fotoğraf bulunamadı.')
+              setError('No photo found to upload.')
       return
     }
 
@@ -456,7 +470,7 @@ export const CameraProvider = ({ children, initialFolderId = null }) => {
 
   const processUpload = async (uploadId, imageData, fileName, targetFolderId) => {
     try {
-      console.log(`CameraProvider: Starting async upload ${uploadId}...`)
+      logger.info(`CameraProvider: Starting async upload ${uploadId}...`)
       
       // Update status to uploading
       setUploadQueue(prev => prev.map(item => 
@@ -467,11 +481,11 @@ export const CameraProvider = ({ children, initialFolderId = null }) => {
       
       // If not authenticated, authenticate first
       if (!isAuthenticated) {
-        console.log(`CameraProvider: Authenticating for upload ${uploadId}...`)
+        logger.info(`CameraProvider: Authenticating for upload ${uploadId}...`)
         
         try {
           const authResult = await googleDriveService.authenticate()
-          console.log(`CameraProvider: Authentication successful for upload ${uploadId}!`)
+          logger.info(`CameraProvider: Authentication successful for upload ${uploadId}!`)
           setIsAuthenticated(true)
           
           if (authResult.userInfo) {
@@ -484,13 +498,13 @@ export const CameraProvider = ({ children, initialFolderId = null }) => {
           let authErrorMessage = 'Kimlik doğrulama başarısız: '
           
           if (authError.message.includes('iptal edildi')) {
-            authErrorMessage = 'Giriş işlemi iptal edildi. Lütfen "Giriş Yap" butonuna tıklayarak tekrar deneyin.'
-          } else if (authError.message.includes('zaman aşımı')) {
-            authErrorMessage = 'Giriş işlemi zaman aşımına uğradı. Lütfen tekrar deneyin.'
-          } else if (authError.message.includes('izni reddedildi')) {
-            authErrorMessage = 'Google Drive erişim izni reddedildi. Lütfen izinleri kontrol edin.'
-          } else if (authError.message.includes('başlatılamadı')) {
-            authErrorMessage = 'Giriş işlemi başlatılamadı. Lütfen sayfayı yenileyip tekrar deneyin.'
+            authErrorMessage = 'Login process was cancelled. Please try again by clicking the "Sign In" button.'
+                      } else if (authError.message.includes('zaman aşımı')) {
+              authErrorMessage = 'Login process timed out. Please try again.'
+                      } else if (authError.message.includes('izni reddedildi')) {
+              authErrorMessage = 'Google Drive access permission denied. Please check permissions.'
+                      } else if (authError.message.includes('başlatılamadı')) {
+              authErrorMessage = 'Login process could not be started. Please refresh the page and try again.'
           } else {
             authErrorMessage += authError.message
           }
@@ -509,7 +523,7 @@ export const CameraProvider = ({ children, initialFolderId = null }) => {
 
       // Check upload limit before uploading (if we have limit info)
       if (uploadLimit !== null && uploadLimit !== -1) {
-        console.log(`CameraProvider: Checking upload limit for ${uploadId}...`)
+        logger.info(`CameraProvider: Checking upload limit for ${uploadId}...`)
         const limitResult = await FirebaseService.checkUserUploadLimit(targetFolderId, userInfo.id)
         
         if (limitResult.success) {
@@ -526,7 +540,7 @@ export const CameraProvider = ({ children, initialFolderId = null }) => {
             return
           }
           
-          console.log(`CameraProvider: Upload limit OK for ${uploadId} (${limitResult.currentCount}/${limitResult.limit})`)
+          logger.info(`CameraProvider: Upload limit OK for ${uploadId} (${limitResult.currentCount}/${limitResult.limit})`)
         } else {
           console.error(`CameraProvider: Upload limit check failed for ${uploadId}:`, limitResult.error)
           const errorMessage = 'Limit kontrolü yapılamadı. Lütfen tekrar deneyin.'
@@ -541,7 +555,7 @@ export const CameraProvider = ({ children, initialFolderId = null }) => {
           return
         }
       } else {
-        console.log(`CameraProvider: No upload limit set for ${uploadId}, proceeding without limit check`)
+        logger.info(`CameraProvider: No upload limit set for ${uploadId}, proceeding without limit check`)
       }
       
       // Update progress
@@ -551,23 +565,60 @@ export const CameraProvider = ({ children, initialFolderId = null }) => {
           : item
       ))
       
-      // Upload image with custom folder ID
-      const result = await googleDriveService.uploadImage(imageData, fileName, targetFolderId)
+      // Upload image with custom folder ID (orijinal dosya ile)
+      let result = await googleDriveService.uploadImage(imageData, fileName, targetFolderId, originalImageFile)
+      
+      // If upload failed due to authentication error, try to re-authenticate and retry
+      if (!result.success && result.error && result.error.includes('erişim izniniz geçersiz')) {
+        logger.info(`CameraProvider: Authentication error detected for ${uploadId}, attempting re-authentication...`)
+        
+        try {
+          // Clear authentication state
+          setIsAuthenticated(false)
+          setUserInfo(null)
+          
+          // Try to authenticate again
+          const authResult = await googleDriveService.authenticate()
+          logger.info(`CameraProvider: Re-authentication successful for ${uploadId}!`)
+          setIsAuthenticated(true)
+          
+          if (authResult.userInfo) {
+            setUserInfo(authResult.userInfo)
+          }
+          
+          // Retry the upload
+          logger.info(`CameraProvider: Retrying upload ${uploadId} after re-authentication...`)
+          result = await googleDriveService.uploadImage(imageData, fileName, targetFolderId, originalImageFile)
+          
+        } catch (reAuthError) {
+          console.error(`CameraProvider: Re-authentication failed for ${uploadId}:`, reAuthError)
+          const reAuthErrorMessage = 'Otomatik yeniden giriş başarısız. Lütfen manuel olarak tekrar giriş yapın.'
+          
+          setUploadQueue(prev => prev.map(item => 
+            item.id === uploadId 
+              ? { ...item, status: 'error', error: reAuthErrorMessage, endTime: new Date() }
+              : item
+          ))
+          setActiveUploads(prev => prev - 1)
+          trackError('upload_error', reAuthErrorMessage)
+          return
+        }
+      }
       
       if (result.success) {
-        console.log(`CameraProvider: Google Drive upload successful for ${uploadId}, updating Firebase...`)
+        logger.info(`CameraProvider: Google Drive upload successful for ${uploadId}, updating Firebase...`)
         
         // Track successful photo upload
         trackPhotoUpload(targetFolderId, true)
         
         // Increment upload count in Firebase (always, regardless of limit)
-        console.log(`CameraProvider: Calling FirebaseService.incrementUserUploadCount for ${uploadId}...`)
+        logger.info(`CameraProvider: Calling FirebaseService.incrementUserUploadCount for ${uploadId}...`)
         const firebaseResult = await FirebaseService.incrementUserUploadCount(targetFolderId, userInfo.id)
-        console.log(`CameraProvider: Firebase increment result for ${uploadId}:`, firebaseResult)
+        logger.info(`CameraProvider: Firebase increment result for ${uploadId}:`, firebaseResult)
         
         if (firebaseResult.success) {
           setCurrentUploadCount(prev => prev + 1)
-          console.log(`CameraProvider: Upload count incremented successfully for ${uploadId}`)
+          logger.info(`CameraProvider: Upload count incremented successfully for ${uploadId}`)
         } else {
           console.error(`CameraProvider: Firebase increment failed for ${uploadId}:`, firebaseResult.error)
         }
@@ -586,19 +637,19 @@ export const CameraProvider = ({ children, initialFolderId = null }) => {
             : item
         ))
         
-            // Move to history after 5 seconds
-    setTimeout(() => {
-      setUploadQueue(prev => prev.filter(item => item.id !== uploadId))
-      setUploadHistory(prev => [...prev, {
-        id: uploadId,
-        fileName,
-        status: 'success',
-        startTime: new Date(),
-        endTime: new Date(),
-        fileId: result.fileId,
-        webViewLink: result.webViewLink
-      }])
-    }, 5000)
+        // Move to history after 5 seconds
+        setTimeout(() => {
+          setUploadQueue(prev => prev.filter(item => item.id !== uploadId))
+          setUploadHistory(prev => [...prev, {
+            id: uploadId,
+            fileName,
+            status: 'success',
+            startTime: new Date(),
+            endTime: new Date(),
+            fileId: result.fileId,
+            webViewLink: result.webViewLink
+          }])
+        }, 5000)
         
       } else {
         console.error(`CameraProvider: Upload failed for ${uploadId}:`, result.message)
@@ -636,12 +687,13 @@ export const CameraProvider = ({ children, initialFolderId = null }) => {
 
            const resetPhoto = () => {
            setCapturedImage(null)
+           setOriginalImageFile(null) // Orijinal dosyayı da temizle
            setError(null)
            setUploadStatus(null)
          }
 
          const logout = () => {
-           console.log('CameraProvider: Logging out user')
+           logger.info('CameraProvider: Logging out user')
            
            // Clear user data from localStorage
            storage.clearUserData()
@@ -660,11 +712,12 @@ export const CameraProvider = ({ children, initialFolderId = null }) => {
            setError(null)
            setUploadStatus(null)
            
-           console.log('CameraProvider: User logged out successfully')
+           logger.info('CameraProvider: User logged out successfully')
          }
 
            const value = {
            capturedImage,
+           originalImageFile,
            isLoading,
            error,
            isGoogleDriveInitialized,

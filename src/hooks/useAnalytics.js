@@ -1,11 +1,12 @@
 import { track } from '@vercel/analytics'
+import { logger } from '../utils/logger.js'
 
 export const useAnalytics = () => {
   const trackEvent = (eventName, properties = {}) => {
     if (import.meta.env.PROD) {
       track(eventName, properties)
     } else {
-      console.log('Analytics Event:', eventName, properties)
+      logger.log('Analytics Event:', eventName, properties)
     }
   }
 

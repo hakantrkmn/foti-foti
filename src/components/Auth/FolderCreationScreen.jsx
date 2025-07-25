@@ -3,6 +3,8 @@ import QRCode from 'qrcode'
 import { FirebaseService, generateHash } from '../../services/firebase'
 import { useAnalytics } from '../../hooks/useAnalytics'
 import { getUploadUrl } from '../../utils/config'
+import { DarkModeToggle } from '../DarkModeToggle'
+import { logger } from '../../utils/logger.js'
 
 export const FolderCreationScreen = ({ onBack }) => {
   const [folderId, setFolderId] = useState('')
@@ -54,7 +56,7 @@ export const FolderCreationScreen = ({ onBack }) => {
       setQrCodeUrl(qrCodeDataUrl)
       setSuccess('QR kod başarıyla oluşturuldu!')
     } catch (error) {
-      console.error('QR kod oluşturma hatası:', error)
+      logger.error('QR kod oluşturma hatası:', error)
       setError('QR kod oluşturulurken bir hata oluştu: ' + error.message)
     } finally {
       setIsGenerating(false)
@@ -70,7 +72,7 @@ export const FolderCreationScreen = ({ onBack }) => {
       await navigator.clipboard.writeText(qrData)
       alert('URL panoya kopyalandı!')
     } catch (error) {
-      console.error('Kopyalama hatası:', error)
+      logger.error('Kopyalama hatası:', error)
       alert('URL kopyalanamadı.')
     }
   }
@@ -92,91 +94,100 @@ export const FolderCreationScreen = ({ onBack }) => {
         setError('Limit güncellenirken hata oluştu: ' + result.error)
       }
     } catch (error) {
-      console.error('Limit güncelleme hatası:', error)
+      logger.error('Limit güncelleme hatası:', error)
       setError('Limit güncellenirken bir hata oluştu.')
     }
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 py-8 px-4">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 dark:from-gray-900 dark:to-gray-800 py-4 sm:py-8 px-4">
       <div className="max-w-2xl mx-auto">
-        <div className="bg-white rounded-2xl shadow-xl p-8">
+        <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-4 sm:p-8">
           {/* Header */}
           <div className="flex items-center justify-between mb-6">
             <button
               onClick={onBack}
-              className="flex items-center text-gray-600 hover:text-gray-800 transition-colors"
+              className="flex items-center text-gray-600 dark:text-gray-300 hover:text-gray-800 dark:hover:text-white transition-colors"
             >
               <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
               </svg>
-              Geri Dön
+              <span className="hidden sm:inline">Back</span>
             </button>
-            <h2 className="text-2xl font-bold text-gray-800">Klasör Oluştur</h2>
-            <div className="w-16"></div> {/* Spacer */}
+            <h2 className="text-xl sm:text-2xl font-bold text-gray-800 dark:text-white text-center flex-1">
+              Create Folder
+            </h2>
+            <div className="flex items-center space-x-2">
+              <DarkModeToggle />
+            </div>
           </div>
 
           {/* Folder ID Input */}
           <div className="mb-6">
-            <label htmlFor="folderId" className="block text-sm font-medium text-gray-700 mb-2">
-              Google Drive Klasör ID
+            <label htmlFor="folderId" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              Google Drive Folder ID
             </label>
             <input
               id="folderId"
               type="text"
               value={folderId}
               onChange={(e) => setFolderId(e.target.value)}
-              placeholder="Google Drive klasör ID'sini girin"
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              placeholder="Enter Google Drive folder ID"
+              className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg 
+                focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent
+                bg-white dark:bg-gray-700 text-gray-900 dark:text-white
+                placeholder-gray-500 dark:placeholder-gray-400"
             />
             
-            <div className="mt-3 text-sm text-gray-600">
+            <div className="mt-3 text-sm text-gray-600 dark:text-gray-400">
               <p className="mb-2">
-                <strong>Klasör ID nasıl alınır:</strong>
+                <strong>How to get Folder ID:</strong>
               </p>
               <ol className="list-decimal list-inside space-y-1">
-                <li>Google Drive'da bir klasör oluşturun</li>
-                <li>Klasöre sağ tıklayın → "Share" → "Anyone with the link" → "Viewer"</li>
-                <li>Klasör URL'sinden ID'yi kopyalayın: <code className="bg-gray-200 px-1 rounded">https://drive.google.com/drive/folders/FOLDER_ID_HERE</code></li>
-                <li>Yukarıdaki kutuya <code className="bg-gray-200 px-1 rounded">FOLDER_ID_HERE</code> kısmını yapıştırın</li>
+                <li>Create a folder in Google Drive</li>
+                <li>Right-click on folder → "Share" → "Anyone with the link" → "Viewer"</li>
+                <li>Copy ID from folder URL: <code className="bg-gray-200 dark:bg-gray-600 px-1 rounded">https://drive.google.com/drive/folders/FOLDER_ID_HERE</code></li>
+                <li>Paste the <code className="bg-gray-200 dark:bg-gray-600 px-1 rounded">FOLDER_ID_HERE</code> part in the box above</li>
               </ol>
             </div>
           </div>
 
           {/* Limit Selection */}
           <div className="mb-6">
-            <label htmlFor="limit" className="block text-sm font-medium text-gray-700 mb-2">
-              Yükleme Limiti
+            <label htmlFor="limit" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              Upload Limit
             </label>
             <select
               id="limit"
               value={limit}
               onChange={(e) => setLimit(parseInt(e.target.value))}
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg 
+                focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent
+                bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
             >
-              <option value={5}>5 fotoğraf</option>
-              <option value={10}>10 fotoğraf</option>
-              <option value={20}>20 fotoğraf</option>
-              <option value={50}>50 fotoğraf</option>
-              <option value={100}>100 fotoğraf</option>
-              <option value={-1}>Limitsiz</option>
+              <option value={5}>5 photos</option>
+              <option value={10}>10 photos</option>
+              <option value={20}>20 photos</option>
+              <option value={50}>50 photos</option>
+              <option value={100}>100 photos</option>
+              <option value={-1}>Unlimited</option>
             </select>
             
-            <div className="mt-2 text-sm text-gray-600">
-              <p>Her kullanıcı bu klasöre maksimum {limit === -1 ? 'sınırsız' : limit} fotoğraf yükleyebilir.</p>
+            <div className="mt-2 text-sm text-gray-600 dark:text-gray-400">
+              <p>Each user can upload maximum {limit === -1 ? 'unlimited' : limit} photos to this folder.</p>
             </div>
           </div>
 
           {/* Error Message */}
           {error && (
-            <div className="mb-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded-lg">
+            <div className="mb-4 p-3 bg-red-100 dark:bg-red-900/30 border border-red-400 dark:border-red-600 text-red-700 dark:text-red-400 rounded-lg">
               {error}
             </div>
           )}
 
           {/* Success Message */}
           {success && (
-            <div className="mb-4 p-3 bg-green-100 border border-green-400 text-green-700 rounded-lg">
+            <div className="mb-4 p-3 bg-green-100 dark:bg-green-900/30 border border-green-400 dark:border-green-600 text-green-700 dark:text-green-400 rounded-lg">
               {success}
             </div>
           )}
@@ -199,14 +210,14 @@ export const FolderCreationScreen = ({ onBack }) => {
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                   </svg>
-                  QR Kod Oluşturuluyor...
+                  Generating QR Code...
                 </>
               ) : (
                 <>
                   <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V6a1 1 0 00-1-1H5a1 1 0 00-1 1v1a1 1 0 001 1zm12 0h2a1 1 0 001-1V6a1 1 0 00-1-1h-2a1 1 0 00-1 1v1a1 1 0 001 1zM5 20h2a1 1 0 001-1v-1a1 1 0 00-1-1H5a1 1 0 00-1 1v1a1 1 0 001 1z" />
                   </svg>
-                  QR Kod Oluştur
+                  Generate QR Code
                 </>
               )}
             </button>
@@ -226,7 +237,7 @@ export const FolderCreationScreen = ({ onBack }) => {
                 <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                 </svg>
-                Limiti Güncelle
+                Update Limit
               </button>
             </div>
           )}
@@ -234,23 +245,23 @@ export const FolderCreationScreen = ({ onBack }) => {
           {/* QR Code Display */}
           {qrCodeUrl && (
             <div className="text-center">
-              <h3 className="text-lg font-medium text-gray-800 mb-4">
-                QR Kod Oluşturuldu!
+              <h3 className="text-lg font-medium text-gray-800 dark:text-white mb-4">
+                QR Code Generated!
               </h3>
               
-              <div className="bg-gray-50 rounded-lg p-6 mb-4">
+              <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4 sm:p-6 mb-4">
                 <img 
                   src={qrCodeUrl} 
                   alt="QR Code" 
-                  className="mx-auto mb-4"
+                  className="mx-auto mb-4 max-w-full h-auto"
                 />
                 
                 <div className="mb-4">
-                  <p className="text-sm text-gray-600 mb-2">
-                    Bu QR kodu okutarak uygulamaya erişebilirsiniz.
+                  <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">
+                    Scan this QR code to access the app.
                   </p>
-                  <p className="text-sm text-blue-600 font-medium">
-                    Limit: {limit === -1 ? 'Limitsiz' : `${limit} fotoğraf`}
+                  <p className="text-sm text-blue-600 dark:text-blue-400 font-medium">
+                    Limit: {limit === -1 ? 'Unlimited' : `${limit} photos`}
                   </p>
                 </div>
                 
@@ -264,13 +275,13 @@ export const FolderCreationScreen = ({ onBack }) => {
                   <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
                   </svg>
-                  URL'yi Kopyala
+                  Copy URL
                 </button>
               </div>
               
-              <div className="text-xs text-gray-500">
-                <p>QR kod, uygulamaya otomatik olarak klasör ID'si ve limit ile giriş yapar.</p>
-                <p>Hash parametresi ile güvenlik sağlanır.</p>
+              <div className="text-xs text-gray-500 dark:text-gray-400">
+                <p>QR code automatically logs into the app with folder ID and limit.</p>
+                <p>Security is provided with hash parameter.</p>
               </div>
             </div>
           )}

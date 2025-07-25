@@ -1,7 +1,11 @@
 // LocalStorage utility functions
+import { logger } from './logger.js'
+
 const STORAGE_KEYS = {
   USER_INFO: 'foti_foti_user_info',
   AUTH_TOKEN: 'foti_foti_auth_token',
+  REFRESH_TOKEN: 'foti_foti_refresh_token',
+  TOKEN_EXPIRY: 'foti_foti_token_expiry',
   FOLDER_ID: 'foti_foti_folder_id',
   UPLOAD_LIMIT: 'foti_foti_upload_limit',
   UPLOAD_COUNT: 'foti_foti_upload_count'
@@ -13,7 +17,7 @@ export const storage = {
     try {
       localStorage.setItem(STORAGE_KEYS.USER_INFO, JSON.stringify(userInfo))
     } catch (error) {
-      console.error('Failed to save user info to localStorage:', error)
+      logger.error('Failed to save user info to localStorage:', error)
     }
   },
 
@@ -22,17 +26,23 @@ export const storage = {
       const userInfo = localStorage.getItem(STORAGE_KEYS.USER_INFO)
       return userInfo ? JSON.parse(userInfo) : null
     } catch (error) {
-      console.error('Failed to get user info from localStorage:', error)
+      logger.error('Failed to get user info from localStorage:', error)
       return null
     }
   },
 
   // Auth token storage
-  setAuthToken: (token) => {
+  setAuthToken: (token, refreshToken = null, expiry = null) => {
     try {
       localStorage.setItem(STORAGE_KEYS.AUTH_TOKEN, token)
+      if (refreshToken) {
+        localStorage.setItem(STORAGE_KEYS.REFRESH_TOKEN, refreshToken)
+      }
+      if (expiry) {
+        localStorage.setItem(STORAGE_KEYS.TOKEN_EXPIRY, expiry.toISOString())
+      }
     } catch (error) {
-      console.error('Failed to save auth token to localStorage:', error)
+      logger.error('Failed to save auth token to localStorage:', error)
     }
   },
 
@@ -40,7 +50,26 @@ export const storage = {
     try {
       return localStorage.getItem(STORAGE_KEYS.AUTH_TOKEN)
     } catch (error) {
-      console.error('Failed to get auth token from localStorage:', error)
+      logger.error('Failed to get auth token from localStorage:', error)
+      return null
+    }
+  },
+
+  getRefreshToken: () => {
+    try {
+      return localStorage.getItem(STORAGE_KEYS.REFRESH_TOKEN)
+    } catch (error) {
+      logger.error('Failed to get refresh token from localStorage:', error)
+      return null
+    }
+  },
+
+  getTokenExpiry: () => {
+    try {
+      const expiry = localStorage.getItem(STORAGE_KEYS.TOKEN_EXPIRY)
+      return expiry ? new Date(expiry) : null
+    } catch (error) {
+      logger.error('Failed to get token expiry from localStorage:', error)
       return null
     }
   },
@@ -52,7 +81,7 @@ export const storage = {
       localStorage.setItem(STORAGE_KEYS.UPLOAD_LIMIT, limit?.toString() || '')
       localStorage.setItem(STORAGE_KEYS.UPLOAD_COUNT, count?.toString() || '0')
     } catch (error) {
-      console.error('Failed to save folder info to localStorage:', error)
+      logger.error('Failed to save folder info to localStorage:', error)
     }
   },
 
@@ -68,7 +97,7 @@ export const storage = {
         count: count ? parseInt(count) : 0
       }
     } catch (error) {
-      console.error('Failed to get folder info from localStorage:', error)
+      logger.error('Failed to get folder info from localStorage:', error)
       return { folderId: null, limit: null, count: 0 }
     }
   },
@@ -79,9 +108,9 @@ export const storage = {
       Object.values(STORAGE_KEYS).forEach(key => {
         localStorage.removeItem(key)
       })
-      console.log('All localStorage data cleared')
+      logger.log('All localStorage data cleared')
     } catch (error) {
-      console.error('Failed to clear localStorage:', error)
+      logger.error('Failed to clear localStorage:', error)
     }
   },
 
@@ -90,9 +119,11 @@ export const storage = {
     try {
       localStorage.removeItem(STORAGE_KEYS.USER_INFO)
       localStorage.removeItem(STORAGE_KEYS.AUTH_TOKEN)
-      console.log('User data cleared from localStorage')
+      localStorage.removeItem(STORAGE_KEYS.REFRESH_TOKEN)
+      localStorage.removeItem(STORAGE_KEYS.TOKEN_EXPIRY)
+      logger.log('User data cleared from localStorage')
     } catch (error) {
-      console.error('Failed to clear user data from localStorage:', error)
+      logger.error('Failed to clear user data from localStorage:', error)
     }
   },
 

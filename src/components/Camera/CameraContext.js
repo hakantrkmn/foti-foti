@@ -2,6 +2,7 @@ import { createContext } from 'react'
 
 export const CameraContext = createContext({
   capturedImage: null,
+  originalImageFile: null,
   isLoading: false,
   error: null,
   isGoogleDriveInitialized: false,

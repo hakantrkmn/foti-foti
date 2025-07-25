@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import { CameraContext } from './CameraContext'
 import { googleDriveService } from '../../services/googleDrive'
 import { FirebaseService } from '../../services/firebase'
+import { CapacitorCameraService } from '../../services/capacitorCamera'
 import { useSearchParams } from 'react-router-dom'
 import { useAnalytics } from '../../hooks/useAnalytics'
 import { storage } from '../../utils/storage'
@@ -314,9 +315,58 @@ export const CameraProvider = ({ children, initialFolderId = null }) => {
 
   // updateFolderId function removed - folder ID is now read-only from URL
 
-  const openNativeCamera = () => {
-    if (fileInputRef.current) {
-      fileInputRef.current.click()
+  const openNativeCamera = async () => {
+    try {
+      console.log('CameraProvider: Opening native camera...')
+      setIsLoading(true)
+      setError(null)
+      
+      // Check if we're running in Capacitor environment
+      const isCapacitor = window.Capacitor !== undefined
+      
+      if (isCapacitor) {
+        console.log('CameraProvider: Using Capacitor camera...')
+        
+        // Check permissions first
+        const permissions = await CapacitorCameraService.checkPermissions()
+        if (!permissions.camera) {
+          console.log('CameraProvider: Requesting camera permissions...')
+          const newPermissions = await CapacitorCameraService.requestPermissions()
+          if (!newPermissions.camera) {
+            setError('Kamera izni verilmedi. Lütfen ayarlardan kamera iznini etkinleştirin.')
+            setIsLoading(false)
+            return
+          }
+        }
+        
+        // Open native camera
+        const result = await CapacitorCameraService.openNativeCamera()
+        
+        if (result.success) {
+          console.log('CameraProvider: Native camera photo captured successfully')
+          setCapturedImage(result.dataUrl)
+          setError(null)
+          setUploadStatus(null)
+        } else if (result.cancelled) {
+          console.log('CameraProvider: Camera operation cancelled by user')
+          setError(null)
+          setUploadStatus(null)
+        } else {
+          console.error('CameraProvider: Native camera error:', result.error)
+          setError(result.error)
+        }
+      } else {
+        console.log('CameraProvider: Using fallback file input...')
+        // Fallback to file input for web browsers
+        if (fileInputRef.current) {
+          fileInputRef.current.click()
+        }
+      }
+    } catch (error) {
+      console.error('CameraProvider: Camera error:', error)
+      setError('Kamera açılırken bir hata oluştu: ' + error.message)
+    } finally {
+      setIsLoading(false)
     }
   }
 

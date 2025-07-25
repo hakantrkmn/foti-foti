@@ -1,0 +1,13 @@
+{
+  "appId": "com.fotifoti.app",
+  "appName": "foti-foti",
+  "webDir": "dist",
+  "server": {
+    "androidScheme": "https"
+  },
+  "plugins": {
+    "Camera": {
+      "permissions": ["camera"]
+    }
+  }
+}

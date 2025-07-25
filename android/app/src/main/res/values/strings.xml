@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">foti-foti</string>
+    <string name="title_activity_main">foti-foti</string>
+    <string name="package_name">com.fotifoti.app</string>
+    <string name="custom_url_scheme">com.fotifoti.app</string>
+</resources>

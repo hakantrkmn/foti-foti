@@ -18,6 +18,11 @@ export const CameraProvider = ({ children, initialFolderId = null }) => {
   const [uploadLimit, setUploadLimit] = useState(null)
   const [currentUploadCount, setCurrentUploadCount] = useState(0)
   
+  // Asenkron upload sistemi için yeni state'ler
+  const [uploadQueue, setUploadQueue] = useState([])
+  const [activeUploads, setActiveUploads] = useState(0)
+  const [uploadHistory, setUploadHistory] = useState([])
+  
   const fileInputRef = useRef(null)
   const [searchParams] = useSearchParams()
   const { trackUserLogin, trackPhotoUpload, trackError } = useAnalytics()
@@ -338,7 +343,7 @@ export const CameraProvider = ({ children, initialFolderId = null }) => {
     event.target.value = ''
   }
 
-  const uploadToGoogleDrive = async () => {
+  const uploadToGoogleDrive = () => {
     if (!capturedImage) {
       setError('Yüklenecek fotoğraf bulunamadı.')
       return
@@ -365,26 +370,80 @@ export const CameraProvider = ({ children, initialFolderId = null }) => {
       return
     }
 
+    // Generate unique upload ID
+    const uploadId = `upload_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+    
+    // Generate filename with Google username and formatted date
+    const now = new Date()
+    const dateStr = now.toLocaleDateString('tr-TR', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    }).replace(/\./g, '-')
+    
+    const timeStr = now.toLocaleTimeString('tr-TR', {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit'
+    }).replace(/:/g, '-')
+    
+    // Clean username for filename (remove special characters, limit length)
+    const cleanUsername = userInfo.name
+      .replace(/[^a-zA-Z0-9ğüşıöçĞÜŞİÖÇ\s]/g, '') // Remove special characters except Turkish letters
+      .replace(/\s+/g, '_') // Replace spaces with underscores
+      .substring(0, 30) // Limit length
+      .trim()
+    
+    const fileName = `${cleanUsername}_${dateStr}_${timeStr}.jpg`
+    
+    // Create upload object
+    const uploadItem = {
+      id: uploadId,
+      fileName,
+      status: 'pending',
+      progress: 0,
+      error: null,
+      startTime: now,
+      endTime: null
+    }
+    
+    // Add to upload queue
+    setUploadQueue(prev => [...prev, uploadItem])
+    setActiveUploads(prev => prev + 1)
+    
+    // Clear current image so user can take new photo
+    setCapturedImage(null)
+    setError(null)
+    
+    // Start async upload process
+    processUpload(uploadId, capturedImage, fileName, folderId.trim())
+  }
+
+  const processUpload = async (uploadId, imageData, fileName, targetFolderId) => {
     try {
-      console.log('CameraProvider: Starting upload to Google Drive...')
-      setIsLoading(true)
-      setError(null)
+      console.log(`CameraProvider: Starting async upload ${uploadId}...`)
+      
+      // Update status to uploading
+      setUploadQueue(prev => prev.map(item => 
+        item.id === uploadId 
+          ? { ...item, status: 'uploading', progress: 10 }
+          : item
+      ))
       
       // If not authenticated, authenticate first
       if (!isAuthenticated) {
-        console.log('CameraProvider: Not authenticated, authenticating first...')
-        setUploadStatus('Kimlik doğrulama yapılıyor...')
+        console.log(`CameraProvider: Authenticating for upload ${uploadId}...`)
         
         try {
           const authResult = await googleDriveService.authenticate()
-          console.log('CameraProvider: Authentication successful during upload!')
+          console.log(`CameraProvider: Authentication successful for upload ${uploadId}!`)
           setIsAuthenticated(true)
           
           if (authResult.userInfo) {
             setUserInfo(authResult.userInfo)
           }
         } catch (authError) {
-          console.error('CameraProvider: Auth failed during upload:', authError)
+          console.error(`CameraProvider: Auth failed for upload ${uploadId}:`, authError)
           
           // Handle specific auth error types
           let authErrorMessage = 'Kimlik doğrulama başarısız: '
@@ -401,84 +460,142 @@ export const CameraProvider = ({ children, initialFolderId = null }) => {
             authErrorMessage += authError.message
           }
           
-          setError(authErrorMessage)
-          setUploadStatus(null)
-          return // Stop upload process
+          // Update upload status to error
+          setUploadQueue(prev => prev.map(item => 
+            item.id === uploadId 
+              ? { ...item, status: 'error', error: authErrorMessage, endTime: new Date() }
+              : item
+          ))
+          setActiveUploads(prev => prev - 1)
+          trackError('upload_error', authErrorMessage)
+          return
         }
       }
 
       // Check upload limit before uploading (if we have limit info)
       if (uploadLimit !== null && uploadLimit !== -1) {
-        console.log('CameraProvider: Checking upload limit...')
-        const limitResult = await FirebaseService.checkUserUploadLimit(folderId.trim(), userInfo.id)
+        console.log(`CameraProvider: Checking upload limit for ${uploadId}...`)
+        const limitResult = await FirebaseService.checkUserUploadLimit(targetFolderId, userInfo.id)
         
         if (limitResult.success) {
           if (!limitResult.canUpload) {
-            setError(`Yükleme limitiniz doldu! (${limitResult.currentCount}/${limitResult.limit})`)
-            setUploadStatus(null)
+            const errorMessage = `Yükleme limitiniz doldu! (${limitResult.currentCount}/${limitResult.limit})`
+            
+            setUploadQueue(prev => prev.map(item => 
+              item.id === uploadId 
+                ? { ...item, status: 'error', error: errorMessage, endTime: new Date() }
+                : item
+            ))
+            setActiveUploads(prev => prev - 1)
+            trackPhotoUpload(targetFolderId, false)
             return
           }
           
-          console.log(`CameraProvider: Upload limit OK (${limitResult.currentCount}/${limitResult.limit})`)
+          console.log(`CameraProvider: Upload limit OK for ${uploadId} (${limitResult.currentCount}/${limitResult.limit})`)
         } else {
-          console.error('CameraProvider: Upload limit check failed:', limitResult.error)
-          setError('Limit kontrolü yapılamadı. Lütfen tekrar deneyin.')
-          setUploadStatus(null)
+          console.error(`CameraProvider: Upload limit check failed for ${uploadId}:`, limitResult.error)
+          const errorMessage = 'Limit kontrolü yapılamadı. Lütfen tekrar deneyin.'
+          
+          setUploadQueue(prev => prev.map(item => 
+            item.id === uploadId 
+              ? { ...item, status: 'error', error: errorMessage, endTime: new Date() }
+              : item
+          ))
+          setActiveUploads(prev => prev - 1)
+          trackError('upload_error', errorMessage)
           return
         }
       } else {
-        console.log('CameraProvider: No upload limit set, proceeding without limit check')
+        console.log(`CameraProvider: No upload limit set for ${uploadId}, proceeding without limit check`)
       }
       
-      setUploadStatus('Google Drive\'a yükleniyor...')
-      
-      // Generate filename with timestamp
-      const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
-      const fileName = `foti-foti-${timestamp}.jpg`
+      // Update progress
+      setUploadQueue(prev => prev.map(item => 
+        item.id === uploadId 
+          ? { ...item, progress: 50 }
+          : item
+      ))
       
       // Upload image with custom folder ID
-      const result = await googleDriveService.uploadImage(capturedImage, fileName, folderId.trim())
+      const result = await googleDriveService.uploadImage(imageData, fileName, targetFolderId)
       
-                   if (result.success) {
-               console.log('CameraProvider: Google Drive upload successful, updating Firebase...')
-               console.log('CameraProvider: uploadLimit:', uploadLimit)
-               console.log('CameraProvider: userInfo.id:', userInfo.id)
-               
-               // Track successful photo upload
-               trackPhotoUpload(folderId.trim(), true)
-               
-               // Increment upload count in Firebase (always, regardless of limit)
-               console.log('CameraProvider: Calling FirebaseService.incrementUserUploadCount...')
-               const firebaseResult = await FirebaseService.incrementUserUploadCount(folderId.trim(), userInfo.id)
-               console.log('CameraProvider: Firebase increment result:', firebaseResult)
-               
-               if (firebaseResult.success) {
-                 setCurrentUploadCount(prev => prev + 1)
-                 console.log('CameraProvider: Upload count incremented successfully')
-               } else {
-                 console.error('CameraProvider: Firebase increment failed:', firebaseResult.error)
-               }
-               
-               setUploadStatus({
-                 type: 'success',
-                 message: result.message,
-                 fileId: result.fileId,
-                 webViewLink: result.webViewLink
-               })
-             } else {
-               setError(result.message)
-               setUploadStatus(null)
-               // Track failed photo upload
-               trackPhotoUpload(folderId.trim(), false)
-             }
-               } catch (error) {
-             console.error('CameraProvider: Upload error:', error)
-             setError('Google Drive\'a yükleme sırasında bir hata oluştu: ' + error.message)
-             setUploadStatus(null)
-             // Track upload error
-             trackError('upload_error', error.message)
-           } finally {
-      setIsLoading(false)
+      if (result.success) {
+        console.log(`CameraProvider: Google Drive upload successful for ${uploadId}, updating Firebase...`)
+        
+        // Track successful photo upload
+        trackPhotoUpload(targetFolderId, true)
+        
+        // Increment upload count in Firebase (always, regardless of limit)
+        console.log(`CameraProvider: Calling FirebaseService.incrementUserUploadCount for ${uploadId}...`)
+        const firebaseResult = await FirebaseService.incrementUserUploadCount(targetFolderId, userInfo.id)
+        console.log(`CameraProvider: Firebase increment result for ${uploadId}:`, firebaseResult)
+        
+        if (firebaseResult.success) {
+          setCurrentUploadCount(prev => prev + 1)
+          console.log(`CameraProvider: Upload count incremented successfully for ${uploadId}`)
+        } else {
+          console.error(`CameraProvider: Firebase increment failed for ${uploadId}:`, firebaseResult.error)
+        }
+        
+        // Update upload status to success
+        setUploadQueue(prev => prev.map(item => 
+          item.id === uploadId 
+            ? { 
+                ...item, 
+                status: 'success', 
+                progress: 100, 
+                endTime: new Date(),
+                fileId: result.fileId,
+                webViewLink: result.webViewLink
+              }
+            : item
+        ))
+        
+            // Move to history after 5 seconds
+    setTimeout(() => {
+      setUploadQueue(prev => prev.filter(item => item.id !== uploadId))
+      setUploadHistory(prev => [...prev, {
+        id: uploadId,
+        fileName,
+        status: 'success',
+        startTime: new Date(),
+        endTime: new Date(),
+        fileId: result.fileId,
+        webViewLink: result.webViewLink
+      }])
+    }, 5000)
+        
+      } else {
+        console.error(`CameraProvider: Upload failed for ${uploadId}:`, result.message)
+        
+        setUploadQueue(prev => prev.map(item => 
+          item.id === uploadId 
+            ? { ...item, status: 'error', error: result.message, endTime: new Date() }
+            : item
+        ))
+        
+        // Track failed photo upload
+        trackPhotoUpload(targetFolderId, false)
+      }
+      
+    } catch (error) {
+      console.error(`CameraProvider: Upload error for ${uploadId}:`, error)
+      
+      setUploadQueue(prev => prev.map(item => 
+        item.id === uploadId 
+          ? { 
+              ...item, 
+              status: 'error', 
+              error: 'Google Drive\'a yükleme sırasında bir hata oluştu: ' + error.message, 
+              endTime: new Date() 
+            }
+          : item
+      ))
+      
+      // Track upload error
+      trackError('upload_error', error.message)
+    } finally {
+      setActiveUploads(prev => prev - 1)
     }
   }
 
@@ -520,6 +637,9 @@ export const CameraProvider = ({ children, initialFolderId = null }) => {
            folderId,
            isAuthenticated,
            userInfo,
+           uploadQueue,
+           activeUploads,
+           uploadHistory,
            uploadLimit,
            currentUploadCount,
            openNativeCamera,

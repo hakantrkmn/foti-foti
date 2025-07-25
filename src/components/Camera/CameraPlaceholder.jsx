@@ -2,7 +2,7 @@ import { CameraButton } from './CameraButton'
 import { useCamera } from '../../hooks/useCamera'
 
 export const CameraPlaceholder = () => {
-  const { uploadLimit, currentUploadCount, userInfo } = useCamera()
+  const { uploadLimit, currentUploadCount, userInfo, uploadQueue, activeUploads } = useCamera()
   return (
     <div className="text-center py-12">
       {/* Upload Status Display */}
@@ -72,6 +72,59 @@ export const CameraPlaceholder = () => {
               ✅ Limitsiz yükleme aktif
             </div>
           )}
+        </div>
+      )}
+
+      {/* Upload Queue Display */}
+      {uploadQueue.length > 0 && (
+        <div className="mb-6 space-y-2">
+          <h3 className="text-sm font-medium text-gray-700 text-center">
+            Yükleme Durumu ({activeUploads} aktif)
+          </h3>
+          {uploadQueue.map((upload) => (
+            <div key={upload.id} className={`p-3 rounded-lg border ${
+              upload.status === 'success' 
+                ? 'bg-green-100 border-green-400 text-green-700' 
+                : upload.status === 'error'
+                ? 'bg-red-100 border-red-400 text-red-700'
+                : 'bg-blue-100 border-blue-400 text-blue-700'
+            }`}>
+              <div className="flex items-center justify-between">
+                <div className="flex-1">
+                  <div className="text-sm font-medium">{upload.fileName}</div>
+                  <div className="text-xs">
+                    {upload.status === 'pending' && 'Hazırlanıyor...'}
+                    {upload.status === 'uploading' && 'Yükleniyor...'}
+                    {upload.status === 'success' && '✅ Başarıyla yüklendi'}
+                    {upload.status === 'error' && `❌ Hata: ${upload.error}`}
+                  </div>
+                </div>
+                {upload.status === 'uploading' && (
+                  <div className="ml-3">
+                    <div className="w-6 h-6 border-2 border-blue-300 border-t-blue-600 rounded-full animate-spin"></div>
+                  </div>
+                )}
+                {upload.status === 'success' && upload.webViewLink && (
+                  <a 
+                    href={upload.webViewLink} 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="ml-3 text-green-600 hover:text-green-800 underline text-xs"
+                  >
+                    Görüntüle
+                  </a>
+                )}
+              </div>
+              {upload.status === 'uploading' && (
+                <div className="mt-2 w-full bg-blue-200 rounded-full h-1">
+                  <div 
+                    className="bg-blue-600 h-1 rounded-full transition-all duration-300"
+                    style={{ width: `${upload.progress}%` }}
+                  ></div>
+                </div>
+              )}
+            </div>
+          ))}
         </div>
       )}
 

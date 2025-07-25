@@ -1,3 +1,19 @@
 import { createContext } from 'react'
 
-export const CameraContext = createContext() 
+export const CameraContext = createContext({
+  capturedImage: null,
+  isLoading: false,
+  error: null,
+  isGoogleDriveInitialized: false,
+  uploadStatus: null,
+  folderId: '',
+  isAuthenticated: false,
+  userInfo: null,
+  uploadLimit: null,
+  currentUploadCount: 0,
+  openNativeCamera: () => {},
+  uploadToGoogleDrive: () => {},
+  resetPhoto: () => {},
+  handleAutoAuth: () => {},
+  logout: () => {}
+}) 

@@ -1,6 +1,9 @@
 // Configuration utilities
 export const getBaseUrl = () => {
-  return import.meta.env.VITE_BASE_URL || window.location.origin
+  const baseUrl = import.meta.env.VITE_BASE_URL || window.location.origin
+  console.log('Config: Base URL:', baseUrl)
+  console.log('Config: Environment:', import.meta.env.MODE)
+  return baseUrl
 }
 
 export const getAppUrl = (path = '') => {

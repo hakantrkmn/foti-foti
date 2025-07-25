@@ -289,6 +289,10 @@ class GoogleDriveService {
     }
   }
 
+  setAccessToken(token) {
+    this.accessToken = token
+  }
+
   async signOut() {
     if (window.gapi && window.gapi.auth2) {
       const auth2 = window.gapi.auth2.getAuthInstance()

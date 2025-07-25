@@ -4,6 +4,7 @@ import { googleDriveService } from '../../services/googleDrive'
 import { FirebaseService } from '../../services/firebase'
 import { useSearchParams } from 'react-router-dom'
 import { useAnalytics } from '../../hooks/useAnalytics'
+import { storage } from '../../utils/storage'
 
 export const CameraProvider = ({ children, initialFolderId = null }) => {
   const [capturedImage, setCapturedImage] = useState(null)
@@ -23,6 +24,16 @@ export const CameraProvider = ({ children, initialFolderId = null }) => {
 
   useEffect(() => {
     console.log('CameraProvider: useEffect triggered')
+    
+    // Check if user is already logged in from localStorage
+    const savedUserInfo = storage.getUserInfo()
+    const savedAuthToken = storage.getAuthToken()
+    
+    if (savedUserInfo && savedAuthToken) {
+      console.log('CameraProvider: Found saved user info in localStorage')
+      setUserInfo(savedUserInfo)
+      setIsAuthenticated(true)
+    }
     
     // Check URL parameters for folderId (required)
     const urlFolderId = searchParams.get('folderId')
@@ -54,8 +65,16 @@ export const CameraProvider = ({ children, initialFolderId = null }) => {
         console.log('CameraProvider: Google Drive initialized:', initialized)
         setIsGoogleDriveInitialized(initialized)
         
-        // Otomatik authentication kaldırıldı - timeout sorunu nedeniyle
-        // Kullanıcı manuel olarak "Giriş Yap" butonuna tıklayarak giriş yapmalı
+        // If user is already authenticated, set token and load their data
+        if (savedUserInfo && savedAuthToken) {
+          console.log('CameraProvider: Setting saved auth token')
+          googleDriveService.setAccessToken(savedAuthToken)
+          
+          if (urlFolderId) {
+            console.log('CameraProvider: Loading saved user data for folder:', urlFolderId)
+            await loadFirebaseData(urlFolderId, savedUserInfo.id)
+          }
+        }
       } catch (error) {
         console.error('CameraProvider: Google Drive initialization failed:', error)
         setError('Google Drive başlatılamadı: ' + error.message)
@@ -65,26 +84,24 @@ export const CameraProvider = ({ children, initialFolderId = null }) => {
     initGoogleDrive()
   }, [initialFolderId])
 
-  // Reset auth state and load folder info when folderId changes
+  // Load folder info when folderId changes (but don't reset auth state)
   useEffect(() => {
     if (folderId) {
-      console.log('CameraProvider: Folder ID changed, resetting auth state and loading folder info')
-      setIsAuthenticated(false)
+      console.log('CameraProvider: Folder ID changed, loading folder info')
       setError(null)
       setUploadStatus(null)
       
-      // Clear any existing tokens to force re-authentication
-      if (window.gapi && window.gapi.auth2) {
-        const auth2 = window.gapi.auth2.getAuthInstance()
-        if (auth2) {
-          auth2.signOut()
-        }
-      }
-      
       // Load folder info from Firebase
       loadFolderInfoDirectly(folderId)
+      
+      // If user is already authenticated, load their data for this folder
+      const savedUserInfo = storage.getUserInfo()
+      if (savedUserInfo && isAuthenticated) {
+        console.log('CameraProvider: Loading user data for new folder:', folderId)
+        loadFirebaseData(folderId, savedUserInfo.id)
+      }
     }
-  }, [folderId])
+  }, [folderId, isAuthenticated])
 
   const validateHashAndLoadLimit = async (folderId, hash) => {
     try {
@@ -122,13 +139,19 @@ export const CameraProvider = ({ children, initialFolderId = null }) => {
         // Check current upload count
         const limitResult = await FirebaseService.checkUserUploadLimit(folderId, userId)
         
-        if (limitResult.success) {
-          setCurrentUploadCount(limitResult.currentCount)
-          console.log('CameraProvider: User upload count loaded:', limitResult.currentCount)
-        } else {
-          console.log('CameraProvider: Failed to get upload count, setting to 0')
-          setCurrentUploadCount(0)
-        }
+                     if (limitResult.success) {
+               setCurrentUploadCount(limitResult.currentCount)
+               console.log('CameraProvider: User upload count loaded:', limitResult.currentCount)
+               
+               // Save folder info to localStorage
+               storage.setFolderInfo(folderId, uploadLimit, limitResult.currentCount)
+             } else {
+               console.log('CameraProvider: Failed to get upload count, setting to 0')
+               setCurrentUploadCount(0)
+               
+               // Save folder info to localStorage with 0 count
+               storage.setFolderInfo(folderId, uploadLimit, 0)
+             }
       } else {
         console.log('CameraProvider: Failed to create user record, setting count to 0')
         setCurrentUploadCount(0)
@@ -221,6 +244,12 @@ export const CameraProvider = ({ children, initialFolderId = null }) => {
         if (authResult.userInfo) {
           setUserInfo(authResult.userInfo)
           console.log('CameraProvider: User info set:', authResult.userInfo)
+          
+          // Save user info and token to localStorage
+          storage.setUserInfo(authResult.userInfo)
+          if (authResult.accessToken) {
+            storage.setAuthToken(authResult.accessToken)
+          }
           
           // Track successful login
           trackUserLogin('google')
@@ -453,28 +482,52 @@ export const CameraProvider = ({ children, initialFolderId = null }) => {
     }
   }
 
-  const resetPhoto = () => {
-    setCapturedImage(null)
-    setError(null)
-    setUploadStatus(null)
-  }
+           const resetPhoto = () => {
+           setCapturedImage(null)
+           setError(null)
+           setUploadStatus(null)
+         }
 
-  const value = {
-    capturedImage,
-    isLoading,
-    error,
-    isGoogleDriveInitialized,
-    uploadStatus,
-    folderId,
-    isAuthenticated,
-    userInfo,
-    uploadLimit,
-    currentUploadCount,
-    openNativeCamera,
-    uploadToGoogleDrive,
-    resetPhoto,
-    handleAutoAuth
-  }
+         const logout = () => {
+           console.log('CameraProvider: Logging out user')
+           
+           // Clear user data from localStorage
+           storage.clearUserData()
+           
+           // Clear Google Drive auth
+           if (window.gapi && window.gapi.auth2) {
+             const auth2 = window.gapi.auth2.getAuthInstance()
+             if (auth2) {
+               auth2.signOut()
+             }
+           }
+           
+           // Reset state
+           setIsAuthenticated(false)
+           setUserInfo(null)
+           setError(null)
+           setUploadStatus(null)
+           
+           console.log('CameraProvider: User logged out successfully')
+         }
+
+           const value = {
+           capturedImage,
+           isLoading,
+           error,
+           isGoogleDriveInitialized,
+           uploadStatus,
+           folderId,
+           isAuthenticated,
+           userInfo,
+           uploadLimit,
+           currentUploadCount,
+           openNativeCamera,
+           uploadToGoogleDrive,
+           resetPhoto,
+           handleAutoAuth,
+           logout
+         }
 
   return (
     <CameraContext.Provider value={value}>

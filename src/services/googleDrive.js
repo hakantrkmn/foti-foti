@@ -14,6 +14,8 @@ class GoogleDriveService {
     this.accessToken = null
     this.tokenExpiry = null
     this.refreshToken = null
+    this.needsFrequentReauth = false
+    this.refreshTimer = null
     
     // Load tokens from localStorage on initialization
     this.loadTokensFromStorage()
@@ -115,12 +117,25 @@ class GoogleDriveService {
         this.tokenClient = window.google.accounts.oauth2.initTokenClient({
           client_id: this.clientId,
           scope: this.scope,
+          // CRITICAL: These parameters are required to get refresh token
+          access_type: 'offline',
+          include_granted_scopes: true,
           callback: (tokenResponse) => {
+            logger.log('GoogleDriveService: Token response received:', {
+              hasAccessToken: !!tokenResponse.access_token,
+              hasRefreshToken: !!tokenResponse.refresh_token,
+              expiresIn: tokenResponse.expires_in
+            })
+            
             if (tokenResponse && tokenResponse.access_token) {
               this.accessToken = tokenResponse.access_token
               // Set token expiry (typically 1 hour from now)
               this.tokenExpiry = new Date(Date.now() + (tokenResponse.expires_in * 1000))
               this.refreshToken = tokenResponse.refresh_token
+              
+              if (!this.refreshToken) {
+                logger.warn('GoogleDriveService: No refresh token received! This may cause issues.')
+              }
             }
           },
         })
@@ -132,7 +147,7 @@ class GoogleDriveService {
     })
   }
 
-  // Check if token is expired or about to expire (within 5 minutes)
+  // Check if token is expired or about to expire (within 10 minutes for no-refresh-token scenario)
   isTokenExpired() {
     if (!this.accessToken) {
       logger.log('GoogleDriveService: No access token available')
@@ -145,14 +160,18 @@ class GoogleDriveService {
     }
     
     const now = new Date()
-    const fiveMinutesFromNow = new Date(Date.now() + (5 * 60 * 1000))
-    const isExpired = this.tokenExpiry <= fiveMinutesFromNow
+    // Use 10 minutes buffer for no-refresh-token scenario to allow more time for silent reauth
+    const bufferTime = this.refreshToken ? (5 * 60 * 1000) : (10 * 60 * 1000)
+    const bufferFromNow = new Date(Date.now() + bufferTime)
+    const isExpired = this.tokenExpiry <= bufferFromNow
     
     if (isExpired) {
       logger.log('GoogleDriveService: Token is expired or expires soon', {
         now: now.toISOString(),
         expiry: this.tokenExpiry.toISOString(),
-        minutesUntilExpiry: Math.round((this.tokenExpiry - now) / (1000 * 60))
+        minutesUntilExpiry: Math.round((this.tokenExpiry - now) / (1000 * 60)),
+        hasRefreshToken: !!this.refreshToken,
+        bufferMinutes: Math.round(bufferTime / (1000 * 60))
       })
     }
     
@@ -169,7 +188,9 @@ class GoogleDriveService {
         this.refreshToken = storedRefreshToken
         logger.log('GoogleDriveService: Retrieved refresh token from localStorage')
       } else {
-        throw new Error('No refresh token available - user needs to re-authenticate')
+        // No refresh token available - try silent re-authentication
+        logger.log('GoogleDriveService: No refresh token - attempting silent re-authentication...')
+        return await this.attemptSilentReauth()
       }
     }
 
@@ -240,8 +261,198 @@ class GoogleDriveService {
     this.accessToken = null
     this.refreshToken = null
     this.tokenExpiry = null
+    this.needsFrequentReauth = false
+    
+    // Clear refresh timer
+    if (this.refreshTimer) {
+      clearTimeout(this.refreshTimer)
+      this.refreshTimer = null
+    }
+    
     storage.clearUserData()
     logger.log('GoogleDriveService: All tokens cleared')
+  }
+
+  // Generate PKCE code verifier and challenge
+  generatePKCE() {
+    // Generate code verifier (random string)
+    const codeVerifier = this.generateRandomString(128)
+    
+    // Generate code challenge (SHA256 hash of verifier, base64url encoded)
+    return crypto.subtle.digest('SHA-256', new TextEncoder().encode(codeVerifier))
+      .then(hashBuffer => {
+        const codeChallenge = this.base64URLEncode(hashBuffer)
+        return { codeVerifier, codeChallenge }
+      })
+  }
+
+  // Generate random string for PKCE
+  generateRandomString(length) {
+    const charset = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~'
+    let result = ''
+    const randomValues = new Uint8Array(length)
+    crypto.getRandomValues(randomValues)
+    
+    for (let i = 0; i < length; i++) {
+      result += charset[randomValues[i] % charset.length]
+    }
+    return result
+  }
+
+  // Base64URL encode
+  base64URLEncode(buffer) {
+    const base64 = btoa(String.fromCharCode(...new Uint8Array(buffer)))
+    return base64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '')
+  }
+
+  // Exchange authorization code for tokens using PKCE
+  async exchangeCodeForTokens(authorizationCode, codeVerifier) {
+    try {
+      logger.log('GoogleDriveService: Exchanging authorization code for tokens with PKCE...')
+      
+      const response = await fetch('https://oauth2.googleapis.com/token', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: new URLSearchParams({
+          client_id: this.clientId,
+          code: authorizationCode,
+          code_verifier: codeVerifier, // PKCE code verifier
+          grant_type: 'authorization_code',
+          redirect_uri: window.location.origin,
+        }),
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}))
+        logger.error('GoogleDriveService: Token exchange failed:', response.status, errorData)
+        throw new Error(`Token exchange failed: ${response.status} - ${errorData.error_description || errorData.error}`)
+      }
+
+      const tokenData = await response.json()
+      
+      logger.log('GoogleDriveService: Token exchange successful', {
+        hasAccessToken: !!tokenData.access_token,
+        hasRefreshToken: !!tokenData.refresh_token,
+        expiresIn: tokenData.expires_in
+      })
+
+      if (!tokenData.refresh_token) {
+        logger.error('GoogleDriveService: Still no refresh token received after code exchange!')
+      }
+
+      return {
+        access_token: tokenData.access_token,
+        refresh_token: tokenData.refresh_token,
+        expires_in: tokenData.expires_in || 3600,
+        token_type: tokenData.token_type || 'Bearer'
+      }
+      
+    } catch (error) {
+      logger.error('GoogleDriveService: Code exchange error:', error)
+      throw error
+    }
+  }
+
+  // Attempt silent re-authentication without refresh token
+  async attemptSilentReauth() {
+    try {
+      logger.log('GoogleDriveService: Attempting silent re-authentication...')
+      
+      if (!window.google || !window.google.accounts || !window.google.accounts.oauth2) {
+        throw new Error('Google OAuth library not loaded')
+      }
+      
+      return new Promise((resolve) => {
+        const silentTokenClient = window.google.accounts.oauth2.initTokenClient({
+          client_id: this.clientId,
+          scope: this.scope,
+          callback: (response) => {
+            if (response.access_token) {
+              logger.log('GoogleDriveService: Silent re-authentication successful')
+              this.accessToken = response.access_token
+              this.tokenExpiry = new Date(Date.now() + (response.expires_in * 1000))
+              
+              // Save new token
+              storage.setAuthToken(response.access_token, null, this.tokenExpiry)
+              
+              // Schedule next refresh if we're in no-refresh-token mode
+              if (this.needsFrequentReauth) {
+                this.scheduleTokenRefresh()
+              }
+              
+              resolve(true)
+            } else {
+              logger.log('GoogleDriveService: Silent re-authentication failed')
+              resolve(false)
+            }
+          },
+        })
+        
+        // Try silent request first (no prompt)
+        silentTokenClient.requestAccessToken({ prompt: '' })
+      })
+      
+    } catch (error) {
+      logger.error('GoogleDriveService: Silent re-authentication error:', error)
+      return false
+    }
+  }
+
+  // Schedule automatic token refresh for no-refresh-token scenario
+  scheduleTokenRefresh() {
+    // Clear any existing refresh timer
+    if (this.refreshTimer) {
+      clearTimeout(this.refreshTimer)
+    }
+    
+    if (!this.tokenExpiry) return
+    
+    // Schedule refresh 15 minutes before expiry
+    const refreshTime = this.tokenExpiry.getTime() - Date.now() - (15 * 60 * 1000)
+    
+    if (refreshTime > 0) {
+      logger.log('GoogleDriveService: Scheduling automatic token refresh in', Math.round(refreshTime / (1000 * 60)), 'minutes')
+      
+      this.refreshTimer = setTimeout(async () => {
+        logger.log('GoogleDriveService: Automatic token refresh triggered')
+        try {
+          const success = await this.attemptSilentReauth()
+          if (success) {
+            logger.log('GoogleDriveService: Automatic token refresh successful')
+            // Schedule next refresh
+            this.scheduleTokenRefresh()
+          } else {
+            logger.warn('GoogleDriveService: Automatic token refresh failed - user will need to re-authenticate on next API call')
+          }
+        } catch (error) {
+          logger.error('GoogleDriveService: Automatic token refresh error:', error)
+        }
+      }, refreshTime)
+    }
+  }
+
+  // Force re-authentication to get refresh token
+  async forceReAuthentication() {
+    logger.log('GoogleDriveService: Forcing re-authentication to get refresh token...')
+    
+    // Clear existing tokens
+    this.clearTokens()
+    
+    // Revoke existing permissions to force consent screen
+    if (window.google && window.google.accounts && window.google.accounts.oauth2) {
+      try {
+        // This will force the consent screen to appear again
+        await this.authenticate()
+        return true
+      } catch (error) {
+        logger.error('GoogleDriveService: Force re-authentication failed:', error)
+        return false
+      }
+    }
+    
+    return false
   }
 
   async authenticate() {
@@ -274,11 +485,31 @@ class GoogleDriveService {
             reject(new Error(response.error))
           }
         } else {
-          logger.log('Google auth callback: Success, setting access token')
+          logger.log('Google auth callback: Success, processing tokens', {
+            hasAccessToken: !!response.access_token,
+            hasRefreshToken: !!response.refresh_token,
+            expiresIn: response.expires_in
+          })
+          
           this.accessToken = response.access_token
           // Set token expiry (typically 1 hour from now)
           this.tokenExpiry = new Date(Date.now() + (response.expires_in * 1000))
           this.refreshToken = response.refresh_token
+          
+          // Handle no-refresh-token scenario
+          if (!this.refreshToken) {
+            logger.log('GoogleDriveService: No refresh token - using silent re-auth strategy')
+            logger.log('GoogleDriveService: Token will be refreshed silently before expiry')
+            
+            // Set a flag to indicate we're in no-refresh-token mode
+            this.needsFrequentReauth = true
+            
+            // Schedule automatic token refresh before expiry
+            this.scheduleTokenRefresh()
+          } else {
+            logger.log('GoogleDriveService: Refresh token available - standard refresh strategy')
+            this.needsFrequentReauth = false
+          }
           
           // Save tokens to localStorage
           storage.setAuthToken(response.access_token, response.refresh_token, this.tokenExpiry)
@@ -306,18 +537,36 @@ class GoogleDriveService {
       try {
         logger.log('Google auth: Requesting access token...')
         
-        // Create a temporary token client for this request
+        // For client-side apps, use token client with silent refresh strategy
+        logger.log('GoogleDriveService: Using token client with enhanced refresh strategy...')
+        
         const tempTokenClient = window.google.accounts.oauth2.initTokenClient({
           client_id: this.clientId,
           scope: this.scope,
-          callback: authCallback,
+          callback: (response) => {
+            if (isResolved) return
+            
+            logger.log('GoogleDriveService: Token client response:', {
+              hasAccessToken: !!response.access_token,
+              expiresIn: response.expires_in,
+              error: response.error
+            })
+            
+            // Even without refresh token, we can work with shorter-lived tokens
+            if (response.access_token) {
+              // Store a flag to indicate we need frequent re-auth
+              response.needs_frequent_reauth = true
+              authCallback(response)
+            } else {
+              authCallback({ error: response.error || 'no_access_token' })
+            }
+          },
         })
         
-        if (window.gapi.client.getToken() === null) {
-          tempTokenClient.requestAccessToken({ prompt: 'consent' })
-        } else {
-          tempTokenClient.requestAccessToken({ prompt: '' })
-        }
+        // Request with consent to get maximum permissions
+        tempTokenClient.requestAccessToken({ 
+          prompt: 'consent'
+        })
       } catch (error) {
         if (!isResolved) {
           clearTimeout(timeout)

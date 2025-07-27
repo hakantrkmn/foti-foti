@@ -26,7 +26,19 @@ class GoogleDriveService {
       this.tokenExpiry = storage.getTokenExpiry()
       
       if (this.accessToken && this.refreshToken) {
-        logger.log('GoogleDriveService: Tokens loaded from localStorage')
+        logger.log('GoogleDriveService: Tokens loaded from localStorage', {
+          hasAccessToken: !!this.accessToken,
+          hasRefreshToken: !!this.refreshToken,
+          tokenExpiry: this.tokenExpiry ? this.tokenExpiry.toISOString() : 'none',
+          isExpired: this.isTokenExpired()
+        })
+        
+        // If token is expired, try to refresh it immediately
+        if (this.isTokenExpired()) {
+          logger.log('GoogleDriveService: Token is expired, will refresh on next API call')
+        }
+      } else {
+        logger.log('GoogleDriveService: No valid tokens found in localStorage')
       }
     } catch (error) {
       logger.error('GoogleDriveService: Failed to load tokens from localStorage:', error)
@@ -122,18 +134,48 @@ class GoogleDriveService {
 
   // Check if token is expired or about to expire (within 5 minutes)
   isTokenExpired() {
-    if (!this.tokenExpiry) return true
+    if (!this.accessToken) {
+      logger.log('GoogleDriveService: No access token available')
+      return true
+    }
+    
+    if (!this.tokenExpiry) {
+      logger.log('GoogleDriveService: No token expiry time available')
+      return true
+    }
+    
+    const now = new Date()
     const fiveMinutesFromNow = new Date(Date.now() + (5 * 60 * 1000))
-    return this.tokenExpiry <= fiveMinutesFromNow
+    const isExpired = this.tokenExpiry <= fiveMinutesFromNow
+    
+    if (isExpired) {
+      logger.log('GoogleDriveService: Token is expired or expires soon', {
+        now: now.toISOString(),
+        expiry: this.tokenExpiry.toISOString(),
+        minutesUntilExpiry: Math.round((this.tokenExpiry - now) / (1000 * 60))
+      })
+    }
+    
+    return isExpired
   }
 
   // Try to refresh the token
   async refreshAccessToken() {
     if (!this.refreshToken) {
-      throw new Error('No refresh token available')
+      logger.error('GoogleDriveService: No refresh token available for refresh')
+      // Try to get refresh token from localStorage
+      const storedRefreshToken = storage.getRefreshToken()
+      if (storedRefreshToken) {
+        this.refreshToken = storedRefreshToken
+        logger.log('GoogleDriveService: Retrieved refresh token from localStorage')
+      } else {
+        throw new Error('No refresh token available - user needs to re-authenticate')
+      }
     }
 
     try {
+      logger.log('GoogleDriveService: Attempting to refresh access token...')
+      
       const response = await fetch('https://oauth2.googleapis.com/token', {
         method: 'POST',
         headers: {
@@ -141,29 +183,65 @@ class GoogleDriveService {
         },
         body: new URLSearchParams({
           client_id: this.clientId,
-          client_secret: '', // Not needed for client-side apps
           refresh_token: this.refreshToken,
           grant_type: 'refresh_token',
         }),
       })
 
       if (!response.ok) {
-        throw new Error('Token refresh failed')
+        const errorData = await response.json().catch(() => ({}))
+        logger.error('GoogleDriveService: Token refresh failed with status:', response.status, errorData)
+        
+        if (response.status === 400 && errorData.error === 'invalid_grant') {
+          // Refresh token is invalid or expired
+          logger.error('GoogleDriveService: Refresh token is invalid or expired')
+          this.clearTokens()
+          throw new Error('Refresh token expired - user needs to re-authenticate')
+        }
+        
+        throw new Error(`Token refresh failed: ${response.status} ${response.statusText}`)
       }
 
       const data = await response.json()
+      
+      if (!data.access_token) {
+        throw new Error('No access token received in refresh response')
+      }
+      
+      // Update tokens
       this.accessToken = data.access_token
-      this.tokenExpiry = new Date(Date.now() + (data.expires_in * 1000))
+      this.tokenExpiry = new Date(Date.now() + ((data.expires_in || 3600) * 1000))
       
-      // Save new token to localStorage
-      storage.setAuthToken(data.access_token, this.refreshToken, this.tokenExpiry)
+      // If new refresh token is provided, update it
+      if (data.refresh_token) {
+        this.refreshToken = data.refresh_token
+      }
       
-      logger.log('GoogleDriveService: Token refreshed successfully')
+      // Save updated tokens to localStorage
+      storage.setAuthToken(this.accessToken, this.refreshToken, this.tokenExpiry)
+      
+      logger.log('GoogleDriveService: Token refreshed successfully, expires at:', this.tokenExpiry)
       return true
+      
     } catch (error) {
       logger.error('GoogleDriveService: Token refresh failed:', error)
+      
+      // If refresh fails, clear tokens to force re-authentication
+      if (error.message.includes('invalid_grant') || error.message.includes('expired')) {
+        this.clearTokens()
+      }
+      
       return false
     }
+  }
+
+  // Clear all tokens
+  clearTokens() {
+    this.accessToken = null
+    this.refreshToken = null
+    this.tokenExpiry = null
+    storage.clearUserData()
+    logger.log('GoogleDriveService: All tokens cleared')
   }
 
   async authenticate() {
@@ -300,8 +378,13 @@ class GoogleDriveService {
         logger.log('GoogleDriveService: Token expired, attempting refresh...')
         const refreshSuccess = await this.refreshAccessToken()
         if (!refreshSuccess) {
-          throw new Error('Token yenileme başarısız. Lütfen tekrar giriş yapın.')
+          throw new Error('Token refresh failed. Please sign in again to continue uploading.')
         }
+      }
+
+      // Double check we have a valid token
+      if (!this.accessToken) {
+        throw new Error('No access token available. Please sign in again.')
       }
 
       let blob, mimeType;
@@ -362,31 +445,43 @@ class GoogleDriveService {
           errorMessage = 'Folder not found. Please check the folder ID.'
         } else if (response.status === 401) {
           // Try to refresh token and retry once
-          logger.log('GoogleDriveService: 401 error, attempting token refresh and retry...')
-          const refreshSuccess = await this.refreshAccessToken()
-          if (refreshSuccess) {
-            // Retry the upload with new token
-            const retryResponse = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
-              method: 'POST',
-              headers: {
-                'Authorization': `Bearer ${this.accessToken}`
-              },
-              body: form
-            })
-            
-            if (retryResponse.ok) {
-              const result = await retryResponse.json()
-              return {
-                success: true,
-                fileId: result.id,
-                webViewLink: result.webViewLink,
-                message: 'Photo successfully uploaded to Google Drive!'
+          logger.log('GoogleDriveService: 401 Unauthorized error, attempting token refresh and retry...')
+          
+          try {
+            const refreshSuccess = await this.refreshAccessToken()
+            if (refreshSuccess && this.accessToken) {
+              logger.log('GoogleDriveService: Token refreshed, retrying upload...')
+              
+              // Retry the upload with new token
+              const retryResponse = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
+                method: 'POST',
+                headers: {
+                  'Authorization': `Bearer ${this.accessToken}`
+                },
+                body: form
+              })
+              
+              if (retryResponse.ok) {
+                const result = await retryResponse.json()
+                logger.log('GoogleDriveService: Upload successful after token refresh')
+                return {
+                  success: true,
+                  fileId: result.id,
+                  webViewLink: result.webViewLink,
+                  message: 'Photo successfully uploaded to Google Drive!'
+                }
+              } else {
+                const retryErrorText = await retryResponse.text()
+                logger.error('GoogleDriveService: Retry upload failed:', retryResponse.status, retryErrorText)
+                errorMessage = 'Upload failed after token refresh. Please try again or sign in again.'
               }
             } else {
-              errorMessage = 'Your Google Drive access is invalid. Please sign in again.'
+              logger.error('GoogleDriveService: Token refresh failed during 401 retry')
+              errorMessage = 'Authentication failed. Please sign in again to continue uploading.'
             }
-          } else {
-            errorMessage = 'Your Google Drive access is invalid. Please sign in again.'
+          } catch (refreshError) {
+            logger.error('GoogleDriveService: Error during token refresh:', refreshError)
+            errorMessage = 'Authentication error. Please sign in again to continue uploading.'
           }
         } else {
           errorMessage = `Upload failed: ${response.status} ${response.statusText}`

@@ -24,34 +24,46 @@ export const ImagePreview = () => {
   )
 
   return (
-    <div className="w-full max-w-md mx-auto animate-scale-in">
-      {/* Compact Image Preview */}
-      <div className="relative mb-4">
-        <img 
-          src={capturedImage} 
-          alt="Captured photo" 
-          className="w-full h-64 object-cover rounded-lg shadow-lg"
-        />
-        <div className="absolute inset-0 bg-black bg-opacity-5 rounded-lg pointer-events-none" />
+    <div className="w-full max-w-lg mx-auto animate-scale-in">
+      {/* Enhanced Image Preview */}
+      <div className="relative mb-4 bg-white dark:bg-gray-800 rounded-xl shadow-lg p-3">
+        <div className="relative overflow-hidden rounded-lg bg-gray-100 dark:bg-gray-700">
+          <img 
+            src={capturedImage} 
+            alt="Captured photo" 
+            className="w-full max-h-80 object-contain bg-gray-50 dark:bg-gray-800"
+            style={{ minHeight: '200px' }}
+          />
+          {/* Subtle overlay for better contrast */}
+          <div className="absolute inset-0 bg-gradient-to-t from-black/5 to-transparent pointer-events-none" />
+        </div>
+        
+        {/* Photo info */}
+        <div className="mt-2 text-center">
+          <div className="text-xs text-gray-500 dark:text-gray-400">
+            📸 Photo ready for upload
+          </div>
+        </div>
       </div>
 
-      {/* Compact Action Buttons */}
+      {/* Enhanced Action Buttons */}
       <div className="flex gap-3 justify-center mb-4">
         <button
           onClick={uploadToGoogleDrive}
           disabled={isLoading || !isGoogleDriveInitialized || !folderId.trim()}
           className={`
-            flex-1 flex items-center justify-center px-4 py-3 text-white text-sm font-medium
-            bg-gradient-to-r from-green-500 to-green-600 rounded-lg shadow-md
-            hover:shadow-lg transform hover:-translate-y-0.5 transition-all duration-200
-            focus:outline-none focus:ring-2 focus:ring-green-300
+            flex-1 flex items-center justify-center px-6 py-3 text-white font-medium
+            bg-gradient-to-r from-green-500 to-green-600 rounded-xl shadow-lg
+            hover:shadow-xl hover:from-green-600 hover:to-green-700 
+            transform hover:-translate-y-1 transition-all duration-300
+            focus:outline-none focus:ring-4 focus:ring-green-300/50
             disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none
-            max-w-[140px]
+            max-w-[160px]
           `}
         >
           {isLoading ? (
             <>
-              <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+              <svg className="animate-spin -ml-1 mr-2 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
               </svg>
@@ -59,10 +71,10 @@ export const ImagePreview = () => {
             </>
           ) : (
             <>
-              <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
               </svg>
-              Upload
+              Upload to Drive
             </>
           )}
         </button>
@@ -71,37 +83,54 @@ export const ImagePreview = () => {
           onClick={resetPhoto}
           disabled={isLoading}
           className="
-            flex-1 flex items-center justify-center px-4 py-3 text-gray-700 dark:text-gray-300 text-sm font-medium
-            bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg shadow-md
-            hover:shadow-lg hover:bg-gray-50 dark:hover:bg-gray-600 transform hover:-translate-y-0.5 transition-all duration-200
-            focus:outline-none focus:ring-2 focus:ring-gray-300 dark:focus:ring-gray-500
+            flex-1 flex items-center justify-center px-6 py-3 text-gray-700 dark:text-gray-300 font-medium
+            bg-white dark:bg-gray-700 border-2 border-gray-300 dark:border-gray-600 rounded-xl shadow-lg
+            hover:shadow-xl hover:bg-gray-50 dark:hover:bg-gray-600 hover:border-gray-400 dark:hover:border-gray-500
+            transform hover:-translate-y-1 transition-all duration-300
+            focus:outline-none focus:ring-4 focus:ring-gray-300/50 dark:focus:ring-gray-500/50
             disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none
-            max-w-[140px]
+            max-w-[160px]
           "
         >
-          <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
           </svg>
-          Retake
+          Take New Photo
         </button>
       </div>
       
-      {/* Compact Status Messages */}
+      {/* Enhanced Status Messages */}
       {hasAuthError && (
-        <div className="mb-3 p-2 bg-red-100 dark:bg-red-900/30 border border-red-400 dark:border-red-600 text-red-700 dark:text-red-400 rounded-md text-xs text-center">
-          ⚠️ Authentication expired - please try again
+        <div className="mb-4 p-3 bg-red-50 dark:bg-red-900/20 border-l-4 border-red-400 dark:border-red-600 text-red-700 dark:text-red-400 rounded-r-lg text-sm">
+          <div className="flex items-center">
+            <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
+            </svg>
+            Authentication expired - please try again
+          </div>
         </div>
       )}
       
       {!isGoogleDriveInitialized && (
-        <div className="mb-3 p-2 bg-yellow-100 dark:bg-yellow-900/30 border border-yellow-400 dark:border-yellow-600 text-yellow-700 dark:text-yellow-400 rounded-md text-xs text-center">
-          Connecting to Google Drive...
+        <div className="mb-4 p-3 bg-yellow-50 dark:bg-yellow-900/20 border-l-4 border-yellow-400 dark:border-yellow-600 text-yellow-700 dark:text-yellow-400 rounded-r-lg text-sm">
+          <div className="flex items-center">
+            <svg className="animate-spin w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            Connecting to Google Drive...
+          </div>
         </div>
       )}
       
       {!folderId.trim() && (
-        <div className="mb-3 p-2 bg-orange-100 dark:bg-orange-900/30 border border-orange-400 dark:border-orange-600 text-orange-700 dark:text-orange-400 rounded-md text-xs text-center">
-          ⚠️ Please enter folder ID
+        <div className="mb-4 p-3 bg-orange-50 dark:bg-orange-900/20 border-l-4 border-orange-400 dark:border-orange-600 text-orange-700 dark:text-orange-400 rounded-r-lg text-sm">
+          <div className="flex items-center">
+            <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            Please enter folder ID to upload
+          </div>
         </div>
       )}
 

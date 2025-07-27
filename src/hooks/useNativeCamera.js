@@ -27,7 +27,9 @@ export const useNativeCamera = () => {
           dataUrl: result.dataUrl,
           fileName: result.fileName,
           fileSize: result.fileSize,
-          mimeType: result.mimeType
+          mimeType: result.mimeType,
+          originalFile: result.originalFile,
+          quality: result.quality
         }
       } else {
         logger.error('useNativeCamera: Camera failed:', result.error)

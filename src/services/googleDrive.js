@@ -306,14 +306,14 @@ class GoogleDriveService {
 
       let blob, mimeType;
       
-      // Eğer orijinal dosya varsa, onu kullan (kalite kaybını önlemek için)
+      // ALWAYS use original file to preserve quality - NO COMPRESSION
       if (originalFile) {
-        logger.log('GoogleDrive: Using original file for upload, size:', originalFile.size, 'type:', originalFile.type);
+        logger.log('GoogleDrive: Using original file for upload (NO COMPRESSION), size:', originalFile.size, 'type:', originalFile.type);
         blob = originalFile;
         mimeType = originalFile.type;
       } else {
-        // Fallback: base64'ten blob oluştur
-        logger.log('GoogleDrive: Using base64 data for upload');
+        // Fallback: base64'ten blob oluştur (compression yok)
+        logger.log('GoogleDrive: Using base64 data for upload (NO COMPRESSION)');
         const base64Data = imageData.split(',')[1];
         const byteCharacters = atob(base64Data);
         const byteNumbers = new Array(byteCharacters.length);

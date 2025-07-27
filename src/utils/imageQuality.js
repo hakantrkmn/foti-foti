@@ -74,43 +74,7 @@ export class ImageQualityManager {
     });
   }
 
-  // Görsel kalitesini optimize et (gerekirse)
-  static async optimizeImage(file, targetQuality = 0.9) {
-    return new Promise((resolve) => {
-      const canvas = document.createElement('canvas');
-      const ctx = canvas.getContext('2d');
-      const img = new Image();
-
-      img.onload = () => {
-        // Canvas boyutunu ayarla
-        canvas.width = img.width;
-        canvas.height = img.height;
-
-        // Görseli canvas'a çiz
-        ctx.drawImage(img, 0, 0);
-
-        // Yüksek kalitede JPEG olarak dışa aktar
-        canvas.toBlob((blob) => {
-          resolve({
-            success: true,
-            blob,
-            originalSize: file.size,
-            optimizedSize: blob.size,
-            compressionRatio: blob.size / file.size
-          });
-        }, 'image/jpeg', targetQuality);
-      };
-
-      img.onerror = () => {
-        resolve({
-          success: false,
-          error: 'Görsel yüklenemedi'
-        });
-      };
-
-      img.src = URL.createObjectURL(file);
-    });
-  }
+  // NOT: optimizeImage fonksiyonu kaldırıldı - orijinal kalite korunması için
 
   // Görsel formatını kontrol et
   static getImageFormat(file) {

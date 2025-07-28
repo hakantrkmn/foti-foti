@@ -756,6 +756,191 @@ class GoogleDriveService {
     }
   }
 
+  // Create a new folder in Google Drive with public sharing
+  async createFolder(folderName) {
+    try {
+      // Check if token is expired and try to refresh
+      if (this.isTokenExpired()) {
+        logger.log('GoogleDriveService: Token expired, attempting refresh...')
+        const refreshSuccess = await this.refreshAccessToken()
+        if (!refreshSuccess) {
+          throw new Error('Token refresh failed. Please sign in again to continue.')
+        }
+      }
+
+      // Double check we have a valid token
+      if (!this.accessToken) {
+        throw new Error('No access token available. Please sign in again.')
+      }
+
+      logger.log('GoogleDriveService: Creating new folder:', folderName)
+
+      // Step 1: Create the folder
+      const folderMetadata = {
+        name: folderName,
+        mimeType: 'application/vnd.google-apps.folder'
+      }
+
+      const createResponse = await fetch('https://www.googleapis.com/drive/v3/files', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${this.accessToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(folderMetadata)
+      })
+
+      if (!createResponse.ok) {
+        const errorText = await createResponse.text()
+        logger.error('Google Drive folder creation error:', {
+          status: createResponse.status,
+          statusText: createResponse.statusText,
+          errorText: errorText
+        })
+        
+        if (createResponse.status === 401) {
+          // Try to refresh token and retry once
+          logger.log('GoogleDriveService: 401 Unauthorized error during folder creation, attempting token refresh and retry...')
+          
+          try {
+            const refreshSuccess = await this.refreshAccessToken()
+            if (refreshSuccess && this.accessToken) {
+              logger.log('GoogleDriveService: Token refreshed, retrying folder creation...')
+              
+              // Retry the folder creation with new token
+              const retryResponse = await fetch('https://www.googleapis.com/drive/v3/files', {
+                method: 'POST',
+                headers: {
+                  'Authorization': `Bearer ${this.accessToken}`,
+                  'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(folderMetadata)
+              })
+              
+              if (retryResponse.ok) {
+                const folderResult = await retryResponse.json()
+                logger.log('GoogleDriveService: Folder created successfully after token refresh')
+                
+                // Step 2: Set public sharing permissions
+                const permissionResult = await this.setPublicSharing(folderResult.id)
+                if (permissionResult.success) {
+                  return {
+                    success: true,
+                    folderId: folderResult.id,
+                    folderName: folderResult.name,
+                    webViewLink: folderResult.webViewLink,
+                    message: 'Folder created successfully with public sharing!'
+                  }
+                } else {
+                  // Folder created but sharing failed
+                  return {
+                    success: true,
+                    folderId: folderResult.id,
+                    folderName: folderResult.name,
+                    webViewLink: folderResult.webViewLink,
+                    warning: 'Folder created but public sharing setup failed. You may need to set sharing manually.',
+                    message: 'Folder created successfully!'
+                  }
+                }
+              } else {
+                const retryErrorText = await retryResponse.text()
+                logger.error('GoogleDriveService: Retry folder creation failed:', retryResponse.status, retryErrorText)
+                throw new Error('Folder creation failed after token refresh. Please try again or sign in again.')
+              }
+            } else {
+              logger.error('GoogleDriveService: Token refresh failed during folder creation retry')
+              throw new Error('Authentication failed. Please sign in again to continue.')
+            }
+          } catch (refreshError) {
+            logger.error('GoogleDriveService: Error during token refresh for folder creation:', refreshError)
+            throw new Error('Authentication error. Please sign in again to continue.')
+          }
+        } else {
+          throw new Error(`Folder creation failed: ${createResponse.status} ${createResponse.statusText}`)
+        }
+      }
+
+      const folderResult = await createResponse.json()
+      logger.log('GoogleDriveService: Folder created successfully:', folderResult.id)
+
+      // Step 2: Set public sharing permissions
+      const permissionResult = await this.setPublicSharing(folderResult.id)
+      if (permissionResult.success) {
+        return {
+          success: true,
+          folderId: folderResult.id,
+          folderName: folderResult.name,
+          webViewLink: folderResult.webViewLink,
+          message: 'Folder created successfully with public sharing!'
+        }
+      } else {
+        // Folder created but sharing failed
+        return {
+          success: true,
+          folderId: folderResult.id,
+          folderName: folderResult.name,
+          webViewLink: folderResult.webViewLink,
+          warning: 'Folder created but public sharing setup failed. You may need to set sharing manually.',
+          message: 'Folder created successfully!'
+        }
+      }
+
+    } catch (error) {
+      logger.error('Folder creation error:', error)
+      return {
+        success: false,
+        error: error.message,
+        message: 'An error occurred while creating the folder.'
+      }
+    }
+  }
+
+  // Set public sharing permissions for a folder
+  async setPublicSharing(folderId) {
+    try {
+      const permissionMetadata = {
+        role: 'writer',
+        type: 'anyone'
+      }
+
+      const response = await fetch(`https://www.googleapis.com/drive/v3/files/${folderId}/permissions`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${this.accessToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(permissionMetadata)
+      })
+
+      if (!response.ok) {
+        const errorText = await response.text()
+        logger.error('Google Drive permission setting error:', {
+          status: response.status,
+          statusText: response.statusText,
+          errorText: errorText
+        })
+        
+        return {
+          success: false,
+          error: `Failed to set public sharing: ${response.status} ${response.statusText}`
+        }
+      }
+
+      logger.log('GoogleDriveService: Public sharing set successfully for folder:', folderId)
+      return {
+        success: true,
+        message: 'Public sharing set successfully'
+      }
+
+    } catch (error) {
+      logger.error('Permission setting error:', error)
+      return {
+        success: false,
+        error: error.message
+      }
+    }
+  }
+
   setAccessToken(token) {
     this.accessToken = token
   }

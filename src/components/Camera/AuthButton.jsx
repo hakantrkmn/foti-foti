@@ -6,8 +6,7 @@ export const AuthButton = () => {
   // Check if there are authentication errors
   const hasAuthError = uploadQueue.some(upload => 
     upload.status === 'error' && 
-    upload.error && 
-    (upload.error.includes('erişim izniniz geçersiz') || upload.error.includes('yeniden giriş'))
+    (upload.isAuthError || upload.error.includes('Oturum süreniz doldu') || upload.error.includes('erişim izniniz geçersiz') || upload.error.includes('yeniden giriş'))
   )
 
   if (isAuthenticated && userInfo) {
@@ -29,12 +28,13 @@ export const AuthButton = () => {
           <button
             onClick={handleAutoAuth}
             className="
-              px-3 py-1 text-sm font-medium text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30
-              rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/50 transition-colors
-              focus:outline-none focus:ring-2 focus:ring-blue-300
+              px-3 py-1 text-sm font-medium text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/30
+              rounded-lg hover:bg-red-100 dark:hover:bg-red-900/50 transition-colors
+              focus:outline-none focus:ring-2 focus:ring-red-300
+              animate-pulse
             "
           >
-            Sign In Again
+            🔄 Tekrar Giriş
           </button>
         )}
         

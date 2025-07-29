@@ -15,6 +15,7 @@ class GoogleDriveService {
     this.tokenExpiry = null
     this.refreshToken = null
     this.needsFrequentReauth = false
+    this.needsReauth = false
     this.refreshTimer = null
     
     // Load tokens from localStorage on initialization
@@ -262,6 +263,7 @@ class GoogleDriveService {
     this.refreshToken = null
     this.tokenExpiry = null
     this.needsFrequentReauth = false
+    this.needsReauth = false
     
     // Clear refresh timer
     if (this.refreshTimer) {
@@ -384,7 +386,9 @@ class GoogleDriveService {
               
               resolve(true)
             } else {
-              logger.log('GoogleDriveService: Silent re-authentication failed')
+              logger.log('GoogleDriveService: Silent re-authentication failed - user needs to re-authenticate')
+              // Set a flag to indicate re-auth is needed
+              this.needsReauth = true
               resolve(false)
             }
           },
@@ -396,8 +400,15 @@ class GoogleDriveService {
       
     } catch (error) {
       logger.error('GoogleDriveService: Silent re-authentication error:', error)
+      // Set a flag to indicate re-auth is needed
+      this.needsReauth = true
       return false
     }
+  }
+
+  // Check if re-authentication is needed
+  needsReauthentication() {
+    return this.needsReauth
   }
 
   // Schedule automatic token refresh for no-refresh-token scenario
@@ -1043,4 +1054,7 @@ class GoogleDriveService {
   }
 }
 
-export const googleDriveService = new GoogleDriveService() 
+export const googleDriveService = new GoogleDriveService()
+
+// Export the class for testing purposes
+export { GoogleDriveService } 

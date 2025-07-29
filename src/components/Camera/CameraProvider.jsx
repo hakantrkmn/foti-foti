@@ -77,8 +77,18 @@ export const CameraProvider = ({ children, initialFolderId = null }) => {
   }, []);
     
   useEffect(() => {
-    setGlobalError(authError || folderError || captureError);
-  }, [authError, folderError, captureError]);
+    // Check for auth errors in upload queue
+    const hasAuthError = uploadQueue.some(upload => 
+      upload.status === 'error' && 
+      (upload.isAuthError || upload.error.includes('Oturum süreniz doldu') || upload.error.includes('erişim izniniz geçersiz') || upload.error.includes('yeniden giriş'))
+    );
+    
+    if (hasAuthError) {
+      setGlobalError('Oturum süreniz doldu. Lütfen tekrar giriş yapın.');
+    } else {
+      setGlobalError(authError || folderError || captureError);
+    }
+  }, [authError, folderError, captureError, uploadQueue]);
 
   const handleUpload = () => {
     if (capturedImage && userInfo) {

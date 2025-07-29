@@ -76,8 +76,26 @@ export const useUploadManager = (userInfo, uploadLimit, onUploadComplete) => {
 
     } catch (error) {
       logger.error(`useUploadManager: Upload error for ${uploadId}:`, error);
-      setUploadQueue(prev => prev.map(item => item.id === uploadId ? { ...item, status: 'error', error: error.message } : item));
-      trackError('upload_error', error.message);
+      
+      // Check if this is an authentication error
+      const isAuthError = error.message.includes('Token refresh failed') || 
+                         error.message.includes('Authentication failed') ||
+                         error.message.includes('Please sign in again') ||
+                         error.message.includes('401') ||
+                         error.message.includes('unauthorized');
+      
+      const errorMessage = isAuthError 
+        ? 'Oturum süreniz doldu. Lütfen tekrar giriş yapın.'
+        : error.message;
+      
+      setUploadQueue(prev => prev.map(item => item.id === uploadId ? { 
+        ...item, 
+        status: 'error', 
+        error: errorMessage,
+        isAuthError 
+      } : item));
+      
+      trackError('upload_error', errorMessage);
     } finally {
       setActiveUploads(prev => prev - 1);
     }
